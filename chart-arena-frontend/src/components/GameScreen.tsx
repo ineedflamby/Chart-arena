@@ -274,17 +274,17 @@ export function GameScreen({ state, onTrade, onUseItem, onSelectTarget, onCancel
                             ✗ {state.lastReject}
                         </div>
                     )}
-                    {state.positionStatus === "FLAT" && !isPreview && state.currentTick >= 35 && state.currentTick < 60 && (
+                    {state.positionStatus === "FLAT" && !isPreview && state.currentTick >= 90 && state.currentTick < 150 && (
                         <div style={{
                             marginTop: 4, padding: "4px 8px", fontSize: "0.68rem", fontWeight: 700,
-                            color: state.currentTick >= 45 ? "#F4B8CE" : "#d4b978",
-                            background: state.currentTick >= 45 ? "rgba(244,184,206,0.06)" : "rgba(212,185,120,0.06)",
-                            border: "1px solid " + (state.currentTick >= 45 ? "rgba(244,184,206,0.15)" : "rgba(212,185,120,0.15)"),
+                            color: state.currentTick >= 105 ? "#F4B8CE" : "#d4b978",
+                            background: state.currentTick >= 105 ? "rgba(244,184,206,0.06)" : "rgba(212,185,120,0.06)",
+                            border: "1px solid " + (state.currentTick >= 105 ? "rgba(244,184,206,0.15)" : "rgba(212,185,120,0.15)"),
                             clipPath: "polygon(3px 0, 100% 0, calc(100% - 3px) 100%, 0 100%)",
                             textAlign: "center",
-                            animation: state.currentTick >= 45 ? "pulse-glow 1s infinite" : "none",
+                            animation: state.currentTick >= 105 ? "pulse-glow 1s infinite" : "none",
                         }}>
-                            {state.currentTick >= 45 ? "FLAT PENALTY ACTIVE - Open a position!" : "Flat penalty in " + (60 - state.currentTick) + " ticks - trade soon!"}
+                            {state.currentTick >= 105 ? "FLAT PENALTY ACTIVE - Open a position!" : "Flat penalty in " + (105 - state.currentTick) + " ticks - trade soon!"}
                         </div>
                     )}
                 </GameBox>
