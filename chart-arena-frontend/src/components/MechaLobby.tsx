@@ -27,7 +27,7 @@ export function MechaLobby({
     authenticated, connected, walletConnected, onPlay, onConnect, onProfile, onRefreshLeaderboard,
     jackpotAmount, onlineCount, winnerTicker, leaderboard, referralData, referralApplyMsg,
     onApplyReferral, chatMessages, onSendChat, username, address, walletAddress, tierEmoji, tierName,
-    profile, totalPoints, walletBalance, walletProvider, walletNetwork,
+    profile, totalPoints, quests, walletBalance, walletProvider, walletNetwork,
 }: {
     authenticated: boolean; connected: boolean; walletConnected: boolean;
     onPlay: (mode: number, format: number, tier?: number) => void; onConnect: () => void;
@@ -41,6 +41,7 @@ export function MechaLobby({
     tierEmoji: string; tierName: string;
     profile: { matchesPlayed: number; wins: number; losses: number; totalVolume: string; tierProgress: number; volumeUsd?: number; volumeMoto?: number } | null;
     totalPoints: number;
+    quests: { id: string; title: string; emoji: string; completed: boolean; progress: number; requirement: number; comingSoon?: boolean }[];
     walletBalance: { total: number; confirmed: number } | null;
     walletProvider: any;
     walletNetwork: any;
@@ -809,6 +810,29 @@ export function MechaLobby({
                             );
                         })()}
                     </LobbyBox>
+
+                    {/* UX-37: Next Quest Card */}
+                    {quests && quests.length > 0 && (() => {
+                        const next = quests.find(q => !q.completed && !q.comingSoon);
+                        if (!next) return null;
+                        const pct = next.requirement > 1 ? Math.round(next.progress * 100) : 0;
+                        return (
+                            <LobbyBox label="NEXT MISSION" accent={LP.mauve} accent2={LP.sky}>
+                                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                                    <span style={{ fontSize: "1.4rem" }}>{next.emoji}</span>
+                                    <div style={{ flex: 1 }}>
+                                        <div style={{ fontFamily: "Chakra Petch, sans-serif", fontWeight: 700, fontSize: "0.75rem", color: "#e0d8f0" }}>{next.title}</div>
+                                        <div style={{ fontSize: "0.6rem", color: "#8b7fb0", marginTop: 2 }}>{next.requirement > 1 ? pct + "% complete" : "Not started"}</div>
+                                    </div>
+                                </div>
+                                {next.requirement > 1 && (
+                                    <div style={{ marginTop: 6, height: 4, background: "rgba(244,184,206,0.1)", overflow: "hidden" }}>
+                                        <div style={{ height: "100%", width: Math.min(100, pct) + "%", background: "linear-gradient(90deg, #F4B8CE, #92B4F4)", boxShadow: "0 0 6px rgba(244,184,206,0.3)" }} />
+                                    </div>
+                                )}
+                            </LobbyBox>
+                        );
+                    })()}
 
                     {/* Chat */}
                     <LobbyBox label="GLOBAL CHAT" accent={LP.sky} accent2={LP.aqua} flex>

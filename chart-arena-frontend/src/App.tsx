@@ -41,6 +41,22 @@ export function App() {
     // The old on-chain match flow (approve → createMatch → joinMatch) is gone.
 
     // Inject wallet context for console recovery helpers (window.__ca)
+    // UX-19: Dynamic tab title
+    useEffect(() => {
+        const titles: Record<string, string> = {
+            onboarding: "Chart Arena",
+            lobby: "Chart Arena",
+            queue: "Searching... - Chart Arena",
+            waiting_onchain: "Match Found! - Chart Arena",
+            lobby_countdown: "Get Ready! - Chart Arena",
+            seed_reveal: "Get Ready! - Chart Arena",
+            preview: "Preview - Chart Arena",
+            game: "LIVE - Chart Arena",
+            results: "Results - Chart Arena",
+        };
+        document.title = titles[state.screen] || "Chart Arena";
+    }, [state.screen]);
+
     useEffect(() => {
         const provider = (wallet as any).provider;
         const network = (wallet as any).network;
@@ -298,6 +314,7 @@ export function App() {
                     walletBalance={(wallet as any).walletBalance ?? null}
                     walletProvider={(wallet as any).provider ?? null}
                     walletNetwork={(wallet as any).network ?? null}
+                    quests={state.quests}
                 />
             )}
 
