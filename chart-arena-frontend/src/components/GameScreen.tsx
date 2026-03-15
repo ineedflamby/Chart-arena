@@ -107,6 +107,16 @@ export function GameScreen({ state, onTrade, onUseItem, onSelectTarget, onCancel
                     </span>
                     <span style={{ fontSize: '0.7rem', color: '#665C87', fontFamily: "'Chakra Petch', sans-serif", fontWeight: 600 }}>
                         TICK {state.currentTick}/{state.totalTicks}
+                    <span style={{
+                        fontSize: "0.65rem", fontFamily: "Chakra Petch, sans-serif", fontWeight: 700,
+                        padding: "2px 8px",
+                        clipPath: "polygon(3px 0, 100% 0, calc(100% - 3px) 100%, 0 100%)",
+                        background: state.tradeCount >= 6 ? "rgba(244,184,206,0.08)" : "rgba(146,180,244,0.06)",
+                        border: "1px solid " + (state.tradeCount >= 6 ? "rgba(244,184,206,0.15)" : "rgba(146,180,244,0.08)"),
+                        color: state.tradeCount >= 6 ? "#F4B8CE" : "#92B4F4",
+                    }}>
+                        {state.tradeCount} TRADES
+                    </span>
                     </span>
                 </div>
                 <div style={{
@@ -262,6 +272,19 @@ export function GameScreen({ state, onTrade, onUseItem, onSelectTarget, onCancel
                     {state.lastReject && (
                         <div style={{ marginTop: 4, fontSize: '0.68rem', color: '#F4B8CE', fontWeight: 600 }}>
                             ✗ {state.lastReject}
+                        </div>
+                    )}
+                    {state.positionStatus === "FLAT" && !isPreview && state.currentTick >= 35 && state.currentTick < 60 && (
+                        <div style={{
+                            marginTop: 4, padding: "4px 8px", fontSize: "0.68rem", fontWeight: 700,
+                            color: state.currentTick >= 45 ? "#F4B8CE" : "#d4b978",
+                            background: state.currentTick >= 45 ? "rgba(244,184,206,0.06)" : "rgba(212,185,120,0.06)",
+                            border: "1px solid " + (state.currentTick >= 45 ? "rgba(244,184,206,0.15)" : "rgba(212,185,120,0.15)"),
+                            clipPath: "polygon(3px 0, 100% 0, calc(100% - 3px) 100%, 0 100%)",
+                            textAlign: "center",
+                            animation: state.currentTick >= 45 ? "pulse-glow 1s infinite" : "none",
+                        }}>
+                            {state.currentTick >= 45 ? "FLAT PENALTY ACTIVE - Open a position!" : "Flat penalty in " + (60 - state.currentTick) + " ticks - trade soon!"}
                         </div>
                     )}
                 </GameBox>

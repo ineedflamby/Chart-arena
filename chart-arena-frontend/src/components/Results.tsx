@@ -157,9 +157,9 @@ export function Results({ standings, address, txHash, status, tradeCount, matchD
 
             {/* Settlement */}
             <div style={{ fontSize: '0.8rem', color: '#554d73', animation: 'slide-up 1s ease-out' }}>
-                {status === 'settled' && txHash && <span>✅ TX: {truncAddr(txHash)}</span>}
-                {status === 'failed' && <span style={{ color: '#F4B8CE' }}>❌ Settlement failed</span>}
-                {!status && <span>⏳ Settling...</span>}
+                {status === 'settled' && txHash && <span style={{ color: '#82c4a0' }}>✅ Results confirmed! Balance updated.</span>}
+                {status === 'failed' && <span style={{ color: '#F4B8CE' }}>❌ Settlement failed — funds are safe, retrying...</span>}
+                {!status && <span>⏳ Recording results on Bitcoin...</span>}
             </div>
 
             {/* Actions */}

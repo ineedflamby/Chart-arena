@@ -3,6 +3,7 @@ import type { ChatChannel, ChatMessage, LeaderboardData, LeaderboardEntry, Winne
 import { truncAddr } from '../utils/constants';
 import { MODE_ICON_MAP, TierIcon, TierGallery, VOLUME_TIERS, getTierIndex } from './Icons';
 import { LobbyBox } from './LobbyBox';
+import { gameWS } from '../services/ws';
 
 const LP = {
     cream: '#e0d8f0', sky: '#92B4F4', mauve: '#F4B8CE', rose: '#e08a9f',
@@ -71,22 +72,16 @@ export function MechaLobby({
         return () => { cancelled = true; };
     }, [walletProvider, walletNetwork, walletAddress]);
 
-    // Fetch escrow balance
+    // UX-16: Escrow balance via WS (instant, no 10-min wait)
     useEffect(() => {
-        if (!walletProvider || !walletNetwork || !walletAddress) { setEscrowBalance(null); return; }
-        let cancelled = false;
-        (async () => {
-            try {
-                const { getEscrowBalance } = await import('../services/contract');
-                const bal = await getEscrowBalance(walletProvider, walletNetwork, walletAddress);
-                if (!cancelled) setEscrowBalance(bal.toString());
-            } catch (err) {
-                console.warn('[Balance] Failed to read escrow balance:', err);
-                if (!cancelled) setEscrowBalance('0');
-            }
-        })();
-        return () => { cancelled = true; };
-    }, [walletProvider, walletNetwork, walletAddress]);
+        if (walletAddress === null || walletAddress === undefined) { setEscrowBalance(null); return; }
+        gameWS.send("get_escrow_balance");
+        const unsub = gameWS.on("escrow_balance", (msg: any) => {
+            if (msg.balance !== undefined) setEscrowBalance(msg.balance);
+        });
+        const iv = setInterval(() => gameWS.send("get_escrow_balance"), 30000);
+        return () => { unsub(); clearInterval(iv); };
+    }, [walletAddress]);
 
     // Format BTC balance
     const btcSats = walletBalance?.confirmed ?? 0;
