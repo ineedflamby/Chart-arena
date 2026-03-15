@@ -1,0 +1,73 @@
+/* ═══ DOCS PAGE — Responsive + Animations ═══ */
+
+/* Sidebar scrollbar */
+.docs-page .navList::-webkit-scrollbar { width: 3px; }
+.docs-page .navList::-webkit-scrollbar-thumb { background: rgba(146,180,244,0.15); border-radius: 2px; }
+.docs-page .navList::-webkit-scrollbar-track { background: transparent; }
+
+/* Content scrollbar */
+.docs-content::-webkit-scrollbar { width: 5px; }
+.docs-content::-webkit-scrollbar-thumb { background: rgba(146,180,244,0.12); border-radius: 3px; }
+.docs-content::-webkit-scrollbar-thumb:hover { background: rgba(146,180,244,0.25); }
+.docs-content::-webkit-scrollbar-track { background: transparent; }
+
+/* Search input focus */
+.docs-search:focus {
+    border-color: rgba(146,180,244,0.3) !important;
+    box-shadow: 0 0 12px rgba(146,180,244,0.08);
+}
+
+/* Card hover effect */
+.docs-card {
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+.docs-card:hover {
+    border-color: rgba(146,180,244,0.12);
+    box-shadow: 0 2px 16px rgba(0,0,0,0.3), inset 0 0 30px rgba(146,180,244,0.01);
+}
+
+/* Mobile menu button — only shown on small screens */
+.docs-menu-btn {
+    display: none !important;
+}
+
+/* ── RESPONSIVE: Tablet ── */
+@media (max-width: 900px) {
+    .docs-content {
+        padding: 20px 20px !important;
+    }
+    .docs-sidebar {
+        width: 220px !important;
+    }
+}
+
+/* ── RESPONSIVE: Mobile ── */
+@media (max-width: 700px) {
+    .docs-menu-btn {
+        display: block !important;
+    }
+    .docs-sidebar {
+        position: fixed !important;
+        left: 0; top: 47px; bottom: 0;
+        width: 280px !important;
+        z-index: 150;
+        transform: translateX(-100%);
+        transition: transform 0.25s ease-out;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+    }
+    .docs-sidebar.open {
+        transform: translateX(0);
+    }
+    .docs-content {
+        padding: 16px 14px !important;
+    }
+    .docs-section-title {
+        font-size: 1.3rem !important;
+    }
+    .docs-card-inner {
+        padding: 14px 16px !important;
+    }
+    .docs-header-title {
+        font-size: 0.85rem !important;
+    }
+}

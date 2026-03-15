@@ -1,0 +1,115 @@
+/* ═══ Chart Arena — Item VFX Keyframes ═══ */
+
+.vfx-layer{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:5;}
+.vfx-abs{position:absolute;inset:0;pointer-events:none;}
+.vfx-canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;}
+.vfx-label{position:absolute;top:12px;left:50%;transform:translateX(-50%);padding:5px 20px;font-weight:700;font-family:'Chakra Petch',sans-serif;letter-spacing:4px;white-space:nowrap;z-index:8;}
+.vfx-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-weight:700;font-family:'Chakra Petch',sans-serif;white-space:nowrap;}
+
+/* ═══ GHOST TRADE ═══ */
+@keyframes ghostPulse{0%,100%{opacity:0.6}50%{opacity:0.25}}
+@keyframes ghostRift{0%{transform:scaleY(0);opacity:0}20%{transform:scaleY(1);opacity:1}80%{opacity:0.7}100%{transform:scaleY(0) translateX(10px);opacity:0}}
+@keyframes ghostParticle{0%{transform:translate(0,0) scale(1);opacity:0.8}100%{transform:translate(var(--dx),var(--dy)) scale(0);opacity:0}}
+@keyframes ghostWisp{0%,100%{transform:translateY(0) scaleX(1);opacity:0.3}50%{transform:translateY(-30px) scaleX(1.5);opacity:0.15}}
+@keyframes ghostFlicker{0%{opacity:0.7}10%{opacity:0.2}12%{opacity:0.8}30%{opacity:0.5}60%{opacity:0.4}62%{opacity:0.9}100%{opacity:0.7}}
+.vfx-ghost-bg{animation:ghostFlicker 2s steps(1) infinite}
+.vfx-ghost-rift{animation:ghostRift 2.5s ease-in-out infinite;border-radius:2px}
+.vfx-ghost-wisp{animation:ghostWisp 3s ease-in-out infinite}
+.vfx-ghost-label{animation:ghostPulse 2s ease-in-out infinite;color:rgba(100,200,255,0.5);font-size:2rem;letter-spacing:8px;text-shadow:0 0 30px rgba(100,200,255,0.3),0 0 60px rgba(180,100,255,0.2)}
+
+/* ═══ SHIELD ═══ */
+@keyframes shieldPulse{0%,100%{box-shadow:inset 0 0 30px rgba(255,200,60,0.05),0 0 20px rgba(255,200,60,0.1)}50%{box-shadow:inset 0 0 60px rgba(255,200,60,0.1),0 0 50px rgba(255,200,60,0.2)}}
+@keyframes shieldRipple{0%{transform:translate(-50%,-50%) scale(0.2);opacity:0.5;border-width:3px}100%{transform:translate(-50%,-50%) scale(1.8);opacity:0;border-width:1px}}
+@keyframes hexFloat{0%,100%{transform:translateY(0) rotate(0deg);opacity:0.4}50%{transform:translateY(-15px) rotate(30deg);opacity:0.7}}
+@keyframes shieldFlash{0%{opacity:0.5}100%{opacity:0}}
+@keyframes sparkFly{0%{transform:translate(0,0) scale(1);opacity:1}100%{transform:translate(var(--sx),var(--sy)) scale(0);opacity:0}}
+.vfx-shield-border{animation:shieldPulse 1.5s ease-in-out infinite}
+.vfx-shield-ripple{animation:shieldRipple 1.5s ease-out forwards}
+.vfx-shield-hex{animation:hexFloat 3s ease-in-out infinite}
+
+/* ═══ SCALP ═══ */
+@keyframes elecBorderSoft{0%,100%{border-color:rgba(0,180,255,0.12);box-shadow:inset 0 0 20px rgba(0,180,255,0.02)}50%{border-color:rgba(0,200,255,0.3);box-shadow:inset 0 0 40px rgba(0,180,255,0.05)}}
+@keyframes zapGlow{0%,100%{text-shadow:0 0 10px rgba(0,200,255,0.4)}50%{text-shadow:0 0 25px rgba(0,200,255,0.6),0 0 40px rgba(100,220,255,0.2)}}
+.vfx-scalp-border{animation:elecBorderSoft 1.5s ease-in-out infinite}
+.vfx-scalp-label{animation:zapGlow 1.5s ease-in-out infinite}
+
+/* ═══ RADAR ═══ */
+@keyframes radarSweep{0%{transform:translate(-50%,-50%) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(360deg)}}
+@keyframes radarPing{0%{transform:translate(-50%,-50%) scale(0);opacity:0.5;border-width:2px}100%{transform:translate(-50%,-50%) scale(3);opacity:0;border-width:0.5px}}
+@keyframes blipPop{0%{transform:scale(0);opacity:0}30%{transform:scale(1.3);opacity:1}100%{transform:scale(1);opacity:0.7}}
+@keyframes scanLine{0%{top:-2px}100%{top:100%}}
+@keyframes dataStream{0%{transform:translateY(-100%);opacity:0.3}100%{transform:translateY(100vh);opacity:0}}
+
+/* ═══ BOOST ═══ */
+@keyframes rocketTrail{0%{transform:translateY(0) scaleY(1);opacity:0.7}100%{transform:translateY(350px) scaleY(2);opacity:0}}
+@keyframes starStreak{0%{transform:translateY(-20px);opacity:0.8}100%{transform:translateY(400px);opacity:0}}
+@keyframes powerAura{0%,100%{box-shadow:inset 0 0 40px rgba(0,255,100,0.05),0 0 20px rgba(0,255,100,0.08)}50%{box-shadow:inset 0 0 80px rgba(0,255,100,0.1),0 0 50px rgba(0,255,100,0.15)}}
+@keyframes boostFlash{0%{opacity:0.4}100%{opacity:0}}
+@keyframes arrowUp{0%{transform:translateY(0);opacity:0.5}100%{transform:translateY(-350px);opacity:0}}
+@keyframes pulseRing{0%{transform:translate(-50%,-50%) scale(0.3);opacity:0.5;border-width:3px}100%{transform:translate(-50%,-50%) scale(2);opacity:0;border-width:0.5px}}
+@keyframes glowPulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.3)}}
+
+/* ═══ FREEZE ═══ */
+@keyframes icePulse{0%,100%{border-color:rgba(77,201,246,0.2);box-shadow:inset 0 0 30px rgba(77,201,246,0.04)}50%{border-color:rgba(168,230,255,0.45);box-shadow:inset 0 0 60px rgba(77,201,246,0.08)}}
+@keyframes snowDrift{0%{transform:translateY(-10px) translateX(0) rotate(0deg);opacity:0.7}50%{transform:translateY(160px) translateX(20px) rotate(180deg);opacity:0.5}100%{transform:translateY(340px) translateX(-10px) rotate(360deg);opacity:0}}
+@keyframes frostGrow{0%{transform:scale(0);opacity:0}100%{transform:scale(1);opacity:0.5}}
+@keyframes iceCrack{0%{stroke-dashoffset:200;opacity:0}30%{opacity:0.5}100%{stroke-dashoffset:0;opacity:0.3}}
+@keyframes frozenPulse{0%,100%{opacity:0.5;text-shadow:0 0 15px rgba(77,201,246,0.4)}50%{opacity:0.8;text-shadow:0 0 30px rgba(77,201,246,0.6),0 0 50px rgba(168,230,255,0.3)}}
+.vfx-snow{position:absolute;top:-10px;border-radius:50%;background:rgba(200,235,255,0.4);animation:snowDrift linear infinite}
+.vfx-freeze-border{animation:icePulse 2s ease-in-out infinite}
+.vfx-freeze-label{animation:frozenPulse 2s ease-in-out infinite}
+
+/* ═══ MIRROR CURSE ═══ */
+@keyframes mirrorGlitch{0%{transform:translateX(-50%) translate(0,0)}20%{transform:translateX(-50%) translate(3px,-2px)}40%{transform:translateX(-50%) translate(-2px,1px)}60%{transform:translateX(-50%) translate(2px,2px)}100%{transform:translateX(-50%) translate(0,0)}}
+@keyframes rgbShift{0%,100%{transform:translate(0,0)}25%{transform:translate(3px,-1px)}50%{transform:translate(-2px,2px)}75%{transform:translate(1px,-2px)}}
+@keyframes mirrorFlip{0%,90%{transform:scaleX(1)}95%{transform:scaleX(-1)}100%{transform:scaleX(1)}}
+@keyframes shardFloat{0%,100%{transform:rotate(0deg);opacity:0.4}50%{transform:rotate(15deg);opacity:0.6}}
+
+/* ═══ DRAIN ═══ */
+@keyframes bloodDrip{0%{transform:translateY(-10px) scaleY(0.3);opacity:0.8}100%{transform:translateY(350px) scaleY(1.5);opacity:0}}
+@keyframes soulPull{0%{transform:translate(var(--sx),var(--sy)) scale(1);opacity:0.8}100%{transform:translate(0,0) scale(0);opacity:0}}
+@keyframes drainPulse{0%,100%{box-shadow:inset 0 0 40px rgba(180,20,60,0.04)}50%{box-shadow:inset 0 0 80px rgba(180,20,60,0.1)}}
+@keyframes heartbeat{0%{transform:translate(-50%,-50%) scale(1)}15%{transform:translate(-50%,-50%) scale(1.15)}30%{transform:translate(-50%,-50%) scale(1)}45%{transform:translate(-50%,-50%) scale(1.08)}60%{transform:translate(-50%,-50%) scale(1)}}
+@keyframes veinPulse{0%{stroke-opacity:0.1}50%{stroke-opacity:0.3}100%{stroke-opacity:0.1}}
+@keyframes bloodDot{0%{box-shadow:0 0 4px rgba(180,20,60,0.6),0 0 8px rgba(180,20,60,0.3)}50%{box-shadow:0 0 8px rgba(255,40,60,0.8),0 0 16px rgba(180,20,60,0.4)}100%{box-shadow:0 0 4px rgba(180,20,60,0.6),0 0 8px rgba(180,20,60,0.3)}}
+
+/* ═══ GLITCH ═══ */
+@keyframes glitchShift{0%{transform:translate(0,0)}20%{transform:translate(-3px,2px)}40%{transform:translate(2px,-1px)}60%{transform:translate(-1px,3px)}80%{transform:translate(3px,-2px)}100%{transform:translate(0,0)}}
+@keyframes staticFlash{0%{opacity:0}5%{opacity:0.3}10%{opacity:0}30%{opacity:0.15}35%{opacity:0}70%{opacity:0.25}75%{opacity:0}100%{opacity:0}}
+@keyframes corruptScan{0%{top:-20px;opacity:0.6}100%{top:100%;opacity:0}}
+@keyframes errorBlink{0%,49%{opacity:0}50%,100%{opacity:1}}
+
+/* ═══ SWAP ═══ */
+@keyframes orbitA{0%{transform:translate(-50%,-50%) rotate(0deg) translateX(100px) rotate(0deg)}100%{transform:translate(-50%,-50%) rotate(360deg) translateX(100px) rotate(-360deg)}}
+@keyframes orbitB{0%{transform:translate(-50%,-50%) rotate(180deg) translateX(100px) rotate(-180deg)}100%{transform:translate(-50%,-50%) rotate(540deg) translateX(100px) rotate(-540deg)}}
+@keyframes swapFlash{0%{opacity:0.5}100%{opacity:0}}
+@keyframes trailFade{0%{opacity:0.4}100%{opacity:0;transform:scale(0.5)}}
+@keyframes spiralGrow{0%{transform:translate(-50%,-50%) scale(0) rotate(0deg);opacity:0.3}100%{transform:translate(-50%,-50%) scale(2.5) rotate(180deg);opacity:0}}
+@keyframes swapPulse{0%,100%{box-shadow:0 0 30px rgba(255,180,0,0.05),0 0 60px rgba(0,180,255,0.05)}50%{box-shadow:0 0 50px rgba(255,180,0,0.1),0 0 80px rgba(0,180,255,0.08)}}
+
+/* ═══ NUKE ═══ */
+@keyframes nukeWhite{0%{opacity:0.95}100%{opacity:0}}
+@keyframes mushroom{0%{transform:translate(-50%,-50%) scale(0);opacity:0.8}40%{transform:translate(-50%,-50%) scale(1.5);opacity:0.5}100%{transform:translate(-50%,-50%) scale(3);opacity:0}}
+@keyframes fireball{0%{transform:translate(-50%,-50%) scale(0.3);opacity:0.9}100%{transform:translate(-50%,-50%) scale(2.5);opacity:0}}
+@keyframes debrisfly{0%{transform:translate(0,0) scale(1);opacity:0.8}100%{transform:translate(var(--dx),var(--dy)) scale(0);opacity:0}}
+@keyframes nukeRing{0%{transform:translate(-50%,-50%) scale(0);opacity:0.7;border-width:4px}100%{transform:translate(-50%,-50%) scale(4);opacity:0;border-width:1px}}
+@keyframes ashFall{0%{transform:translateY(-20px) rotate(0deg);opacity:0.5}100%{transform:translateY(400px) rotate(720deg);opacity:0}}
+
+/* ═══ BLACKOUT ═══ */
+@keyframes boFlicker{0%{opacity:1}5%{opacity:0.3}8%{opacity:0.9}10%{opacity:0.1}12%{opacity:1}30%{opacity:0.8}31%{opacity:0.1}60%{opacity:0.9}62%{opacity:0}64%{opacity:0.5}100%{opacity:0}}
+@keyframes staticJitter{0%{transform:translate(0,0)}25%{transform:translate(-1px,1px)}50%{transform:translate(1px,-1px)}75%{transform:translate(-1px,-1px)}100%{transform:translate(0,0)}}
+@keyframes signalGlitch{0%{transform:translateX(-50%) translate(0,0)}20%{transform:translateX(-50%) translate(4px,-2px)}40%{transform:translateX(-50%) translate(-3px,3px)}60%{transform:translateX(-50%) translate(2px,1px)}100%{transform:translateX(-50%) translate(0,0)}}
+
+/* ═══ EARTHQUAKE ═══ */
+@keyframes crackGrow{0%{stroke-dashoffset:200;opacity:0}30%{opacity:0.5}100%{stroke-dashoffset:0;opacity:0.3}}
+@keyframes dustRise{0%{transform:translateY(0) scale(1);opacity:0.5}100%{transform:translateY(-340px) scale(0.3);opacity:0}}
+@keyframes rubbleFall{0%{transform:translateY(-20px) rotate(0deg);opacity:0.7}100%{transform:translateY(350px) rotate(var(--rot));opacity:0}}
+@keyframes lavaGlow{0%,100%{opacity:0.03}50%{opacity:0.08}}
+@keyframes quakeVignette{0%,100%{box-shadow:inset 0 0 50px rgba(255,80,30,0.04)}50%{box-shadow:inset 0 0 100px rgba(255,80,30,0.1)}}
+
+/* ═══ HEIST ═══ */
+@keyframes coinFly{0%{transform:translate(var(--sx),var(--sy)) scale(1) rotate(0deg);opacity:0.9}100%{transform:translate(var(--tx),var(--ty)) scale(0.3) rotate(720deg);opacity:0}}
+@keyframes spotlightSweep{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+@keyframes heistPulse{0%,100%{border-color:rgba(212,185,120,0.1)}50%{border-color:rgba(212,185,120,0.3)}}
+@keyframes fingerprint{0%{opacity:0;transform:scale(0.8)}50%{opacity:0.15}100%{opacity:0;transform:scale(1.1)}}
+@keyframes coinSpin{0%{transform:scaleX(1)}50%{transform:scaleX(0.1)}100%{transform:scaleX(1)}}

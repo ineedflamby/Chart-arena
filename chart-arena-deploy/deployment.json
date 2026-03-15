@@ -1,0 +1,11 @@
+{
+  "contractAddress": "opt1sqqkgy2qk9lvsc6d4lz2f5y8x7vj5dmmd4y9j82aq",
+  "fundingTx": "9a34c0ff9291a6385d7e31a3738e18173680e9c5109edf308a4ffa80fad731fb",
+  "revealTx": "78e0b16ca484a99be690a466ba574f3193323ca9d1352d21c478b5971fb6c2eb",
+  "network": "testnet",
+  "token": "0xfd4473840751d58d9f8b73bdd57d6c5260453d5518bd7cd02d0a4cf3df9bf4dd",
+  "operator": "0xa0c11da051482996d983740c3faedf7f4ec5a3b55f7bfc548a0907c4d734a399",
+  "treasury": "0x360c8b2f8a0f18c72cb1107257e393745722f2ed8ac18b09b6c4d2f824a44f5a",
+  "prizePool": "0xb076f31447ab6e5ba385e472cc84c8144fa7b27b6317813ebaf6a79e3f1fe828",
+  "deployedAt": "2026-03-14T20:37:32.700Z"
+}

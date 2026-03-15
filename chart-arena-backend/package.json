@@ -1,0 +1,28 @@
+{
+    "name": "chart-arena-backend",
+    "version": "0.1.0",
+    "type": "module",
+    "description": "Chart Arena — Backend Game Server (OPNet Bitcoin L1)",
+    "scripts": {
+        "build": "npx tsc",
+        "start": "node --experimental-vm-modules build/index.js",
+        "dev": "npx tsc && node --experimental-vm-modules build/index.js",
+        "typecheck": "npx tsc --noEmit"
+    },
+    "dependencies": {
+        "@btc-vision/bitcoin": "rc",
+        "@btc-vision/transaction": "rc",
+        "@noble/curves": "^2.0.1",
+        "@noble/hashes": "^2.0.1",
+        "better-sqlite3": "^12.6.2",
+        "dotenv": "^17.3.1",
+        "opnet": "rc",
+        "ws": "^8.18.0"
+    },
+    "devDependencies": {
+        "@types/better-sqlite3": "^7.6.13",
+        "@types/node": "latest",
+        "@types/ws": "^8.5.13",
+        "typescript": "latest"
+    }
+}

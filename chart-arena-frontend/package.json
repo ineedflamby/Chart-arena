@@ -1,0 +1,33 @@
+{
+    "name": "chart-arena-frontend",
+    "version": "0.2.0",
+    "type": "module",
+    "scripts": {
+        "dev": "vite",
+        "build": "npx tsc && vite build",
+        "preview": "vite preview"
+    },
+    "dependencies": {
+        "@btc-vision/bitcoin": "rc",
+        "@btc-vision/transaction": "rc",
+        "@btc-vision/walletconnect": "latest",
+        "opnet": "rc",
+        "react": "^19.1.0",
+        "react-dom": "^19.1.0",
+        "serve": "^14.2.6"
+    },
+    "devDependencies": {
+        "@types/node": "latest",
+        "@types/react": "^19.1.0",
+        "@types/react-dom": "^19.1.0",
+        "@vitejs/plugin-react": "^5.0.0",
+        "crypto-browserify": "latest",
+        "stream-browserify": "latest",
+        "typescript": "latest",
+        "vite": "^7.0.0",
+        "vite-plugin-node-polyfills": "latest"
+    },
+    "overrides": {
+        "@noble/hashes": "2.0.1"
+    }
+}

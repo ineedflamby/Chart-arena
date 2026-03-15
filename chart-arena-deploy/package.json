@@ -1,0 +1,22 @@
+{
+  "name": "chart-arena-deploy",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "generate-wallet": "node --experimental-vm-modules build/generate-wallet.js",
+    "deploy": "node --experimental-vm-modules build/deploy.js",
+    "verify": "node --experimental-vm-modules build/verify.js",
+    "interact": "node --experimental-vm-modules build/interact.js"
+  },
+  "dependencies": {
+    "@btc-vision/bip32": "^7.1.2",
+    "@btc-vision/bitcoin": "^7.0.0-rc.6",
+    "@btc-vision/ecpair": "^4.0.5",
+    "@btc-vision/transaction": "^1.8.0-rc.10",
+    "opnet": "^1.8.1-rc.19",
+    "tiny-secp256k1": "^2.2.4"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

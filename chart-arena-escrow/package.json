@@ -1,0 +1,17 @@
+{
+  "name": "chart-arena-escrow",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "asc src/index.ts --config asconfig.json --target debug",
+    "clean": "rm -rf build/*"
+  },
+  "dependencies": {
+    "@btc-vision/as-bignum": "^0.1.2",
+    "@btc-vision/btc-runtime": "^1.11.0-rc.10"
+  },
+  "devDependencies": {
+    "@btc-vision/assemblyscript": "^0.29.2",
+    "@btc-vision/opnet-transform": "^1.1.0"
+  }
+}
