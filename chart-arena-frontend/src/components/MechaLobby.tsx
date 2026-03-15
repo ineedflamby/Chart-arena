@@ -241,22 +241,40 @@ export function MechaLobby({
                     textAlign: 'center', padding: '0 24px 12px',
                     animation: 'slide-up 1s ease-out',
                 }}>
-                    <div style={{ fontSize: '0.75rem', color: '#6b5b95', marginBottom: 8 }}>
-                        Need a wallet?{' '}
-                        <a href="https://opwallet.org" target="_blank" rel="noopener noreferrer"
-                            style={{ color: '#92B4F4', textDecoration: 'underline', fontWeight: 600 }}>
-                            Install OP_WALLET
+                    <div style={{ fontSize: "0.8rem", color: "#8b7fb0", marginBottom: 12, fontWeight: 600 }}>HOW TO START</div>
+                    <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                        <a href="https://opwallet.org" target="_blank" rel="noopener noreferrer" style={{
+                            display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                            padding: "14px 20px", textDecoration: "none", minWidth: 130,
+                            background: "rgba(146,180,244,0.06)", border: "1.5px solid rgba(146,180,244,0.2)",
+                            clipPath: "polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%)",
+                            transition: "all 0.2s",
+                        }}>
+                            <span style={{ fontSize: "1.4rem" }}>??</span>
+                            <span style={{ fontFamily: "Chakra Petch, sans-serif", fontWeight: 700, fontSize: "0.75rem", color: "#92B4F4", letterSpacing: "0.04em" }}>GET WALLET</span>
+                            <span style={{ fontSize: "0.6rem", color: "#6b5b95" }}>Install OP_WALLET</span>
                         </a>
-                        {' '}— the OPNet browser extension.
-                    </div>
-                    <div style={{ display: 'flex', gap: 16, justifyContent: 'center', fontSize: '0.7rem' }}>
-                        <a href="https://faucet.opnet.org" target="_blank" rel="noopener noreferrer"
-                            style={{ color: '#d4b978', textDecoration: 'none', fontWeight: 600 }}>
-                            🚰 Get testnet MOTO
+                        <a href="https://faucet.opnet.org" target="_blank" rel="noopener noreferrer" style={{
+                            display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                            padding: "14px 20px", textDecoration: "none", minWidth: 130,
+                            background: "rgba(212,185,120,0.06)", border: "1.5px solid rgba(212,185,120,0.2)",
+                            clipPath: "polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%)",
+                            transition: "all 0.2s",
+                        }}>
+                            <span style={{ fontSize: "1.4rem" }}>??</span>
+                            <span style={{ fontFamily: "Chakra Petch, sans-serif", fontWeight: 700, fontSize: "0.75rem", color: "#d4b978", letterSpacing: "0.04em" }}>GET MOTO</span>
+                            <span style={{ fontSize: "0.6rem", color: "#6b5b95" }}>Testnet faucet</span>
                         </a>
-                        <a href="https://docs.opnet.org" target="_blank" rel="noopener noreferrer"
-                            style={{ color: '#8b7fb0', textDecoration: 'none', fontWeight: 600 }}>
-                            📖 Learn about OPNet
+                        <a href="https://docs.opnet.org" target="_blank" rel="noopener noreferrer" style={{
+                            display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+                            padding: "14px 20px", textDecoration: "none", minWidth: 130,
+                            background: "rgba(139,127,176,0.06)", border: "1.5px solid rgba(139,127,176,0.2)",
+                            clipPath: "polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%)",
+                            transition: "all 0.2s",
+                        }}>
+                            <span style={{ fontSize: "1.4rem" }}>??</span>
+                            <span style={{ fontFamily: "Chakra Petch, sans-serif", fontWeight: 700, fontSize: "0.75rem", color: "#8b7fb0", letterSpacing: "0.04em" }}>LEARN</span>
+                            <span style={{ fontSize: "0.6rem", color: "#6b5b95" }}>What is OPNet?</span>
                         </a>
                     </div>
                 </div>

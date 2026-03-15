@@ -599,13 +599,14 @@ export function ProfilePage({ state, wallet, darkMode, closeProfile, setProfileT
                                             background: q.completed ? '#82c4a008' : `${color}06`,
                                             border: `1px solid ${q.completed ? '#82c4a018' : color + '15'}`,
                                             borderLeft: `3px solid ${q.completed ? '#7BBF6A80' : color + '50'}`,
-                                            opacity: q.completed ? 0.55 : 1,
+                                            opacity: q.comingSoon ? 0.35 : q.completed ? 0.55 : 1, position: "relative" as const,
                                         }}>
                                             <span style={{ fontSize: '1.1rem', flexShrink: 0 }}>{q.emoji}</span>
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                                     <span style={{ fontFamily: "'Chakra Petch', sans-serif", fontWeight: 700, fontSize: '0.72rem', color: q.completed ? '#7BBF6A' : '#e0d8f0' }}>
                                                         {q.title} {q.completed ? '✅' : ''}
+                                                    {q.comingSoon && <span style={{ fontSize: "0.5rem", padding: "1px 5px", background: "rgba(146,180,244,0.12)", border: "1px solid rgba(146,180,244,0.2)", color: "#92B4F4", fontWeight: 700, letterSpacing: "0.04em" }}>COMING SOON</span>}
                                                     </span>
                                                 </div>
                                                 <div style={{ fontSize: '0.58rem', color: '#8B7FB0', marginTop: 1 }}>{q.description}</div>

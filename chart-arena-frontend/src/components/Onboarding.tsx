@@ -90,7 +90,7 @@ export function Onboarding({ address, error, onSetUsername, onConnectX }: {
                             fontSize: '0.62rem', color: '#4a4668', marginTop: 2,
                             fontFamily: "'IBM Plex Mono', monospace",
                         }}>
-                            You can change your name later in your profile
+                            You can skip and play as a guest
                         </div>
                     </div>
 

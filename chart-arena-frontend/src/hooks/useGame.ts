@@ -41,6 +41,7 @@ export interface QuestStatus {
     requirement: number;
     actionUrl?: string;
     sortOrder: number;
+    comingSoon?: boolean;
 }
 
 // Referral System
