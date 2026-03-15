@@ -160,7 +160,7 @@ export function GameScreen({ state, onTrade, onUseItem, onSelectTarget, onCancel
                 thickSkinActive={state.thickSkinActive} activeItemVFX={state.activeItemVFX}
                 items={state.inventory.map((id) => {
                     const item = ITEM_NAMES[id];
-                    return item ? { id, emoji: item.emoji, name: item.name } : { id, emoji: '?', name: 'Unknown' };
+                    return item ? { id, emoji: item.emoji, name: item.name, desc: item.desc } : { id, emoji: '?', name: 'Unknown' };
                 })}
                 canUseItems={state.currentPhase !== 'OPEN' && !isPreview}
                 onUseItem={onUseItem}

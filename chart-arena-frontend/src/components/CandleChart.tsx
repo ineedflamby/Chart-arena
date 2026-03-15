@@ -16,6 +16,7 @@ export interface ChartItem {
     id: number;
     emoji: string;
     name: string;
+    desc?: string;
 }
 
 interface Props {
@@ -373,7 +374,7 @@ export function CandleChart({ ticks, entryPrice, positionStatus, equity, startin
                             boxShadow: '0 4px 16px rgba(0,0,0,0.3)', cursor: canUseItems ? 'pointer' : 'default',
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: '1.6rem', transition: 'all 0.2s', opacity: canUseItems ? 1 : 0.5,
-                        }} title={item.name + ' — click to use'}>{item.emoji}</button>
+                        }} title={item.name + (item.desc ? ' — ' + item.desc : '')}>{item.emoji}</button>
                     ) : (
                         <div key={slot} style={{ width: 52, height: 52, borderRadius: 14, border: '2px dashed rgba(235,204,255,0.1)', background: 'rgba(16,13,28,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: '#554d73' }}>—</div>
                     );
