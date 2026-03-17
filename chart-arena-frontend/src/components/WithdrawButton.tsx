@@ -10,6 +10,7 @@ export function WithdrawButton({ wallet, settlementTx }: { wallet: ReturnType<ty
     const [depositAmount, setDepositAmount] = useState('');
     const [depositStatus, setDepositStatus] = useState<'idle' | 'approving' | 'depositing' | 'success' | 'error'>('idle');
     const [depositError, setDepositError] = useState('');
+    const [depositTxHash, setDepositTxHash] = useState<string | null>(null);
 
     // ══════════════════════════════════════════════════════════════
     // SPRINT 3 FIX: Use WS-based off-chain balance (instant) instead
@@ -90,7 +91,9 @@ export function WithdrawButton({ wallet, settlementTx }: { wallet: ReturnType<ty
 
             // Step 1: Direct MOTO.transfer(escrow, amount) — single wallet popup, no cross-contract
             setDepositStatus('approving'); // reuse label: "Transferring..."
+            setDepositTxHash(null); // clear any previous
             const transferTxHash = await transferMotoToEscrow(provider, network, amountWei, wallet.walletAddress!);
+            setDepositTxHash(transferTxHash); // save for BlockProgress display
 
             // Step 2: Tell backend to credit the escrow balance
             setDepositStatus('depositing');
@@ -102,7 +105,7 @@ export function WithdrawButton({ wallet, settlementTx }: { wallet: ReturnType<ty
                     setDepositStatus('success');
                     setDepositAmount('');
                     // Balance will be auto-pushed by backend via escrow_balance message
-                    setTimeout(() => { setDepositStatus('idle'); }, 8000);
+                    setTimeout(() => { setDepositStatus('idle'); setDepositTxHash(null); }, 8000);
                 } else if (s === 'error') {
                     unsub();
                     console.error('[Deposit] Backend error:', msg['error']);
@@ -257,22 +260,25 @@ export function WithdrawButton({ wallet, settlementTx }: { wallet: ReturnType<ty
                     </button>
                 </div>
                 {depositError && <div style={{ fontSize: '0.6rem', color: '#F4B8CE', marginTop: 4 }}>{depositError}</div>}
-                {depositStatus === 'approving' && (
+                {(depositStatus === 'approving' || depositStatus === 'depositing') && (
                     <BlockProgress
-                        label="Transferring MOTO to escrow..."
-                        autoTimer={true}
-                    />
-                )}
-                {depositStatus === 'depositing' && (
-                    <BlockProgress
-                        label="Crediting escrow balance..."
-                        autoTimer={true}
-                        avgBlockTime={30}
+                        pendingTxHash={depositTxHash}
+                        compact
                     />
                 )}
                 {depositStatus === 'success' && (
                     <div style={{ fontSize: '0.6rem', color: '#82C4A0', marginTop: 4 }}>
                         Deposit confirmed! Balance updated.
+                        {depositTxHash && (
+                            <a
+                                href={`https://mempool.space/signet/tx/${depositTxHash}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: '#92B4F4', marginLeft: 6, textDecoration: 'none', fontSize: '0.55rem' }}
+                            >
+                                View TX ↗
+                            </a>
+                        )}
                     </div>
                 )}
             </div>

@@ -158,6 +158,7 @@ function txParams(senderAddr: any, network: Network) {
         maximumAllowedSatToSpend: 10000n,
         refundTo: p2trAddress,
         sender: p2trAddress,
+        network,     // REQUIRED — OP_WALLET uses this to derive MLDSA keypair for the correct chain
         feeRate: 1,  // minimum 1 sat/vB — OPNet TXs confirm fine at minimum rate
     };
 }
@@ -223,13 +224,16 @@ export function clearContractCache(): void {
 /**
  * Wait for a transaction to be mined (appear in a block).
  * Polls getTransaction every `intervalMs` until blockNumber is present.
+ * Also checks the `revert` field — a reverted TX is mined but failed on-chain.
  * Throws after `timeoutMs`.
+ *
+ * Signet blocks average ~10min but can take 30+ min, so default timeout is 15 min.
  */
 async function waitForTxConfirmation(
     provider: AbstractRpcProvider,
     txHash: string,
-    timeoutMs: number = 300_000,  // 5 minutes
-    intervalMs: number = 5_000,   // poll every 5s
+    timeoutMs: number = 900_000,  // 15 minutes — signet blocks are slow
+    intervalMs: number = 8_000,   // poll every 8s (less noise, still responsive)
 ): Promise<void> {
     const start = Date.now();
     console.log(`[Contract] Waiting for TX confirmation: ${txHash}`);
@@ -237,10 +241,24 @@ async function waitForTxConfirmation(
         try {
             const tx = await (provider as any).getTransaction(txHash);
             if (tx && tx.blockNumber !== undefined && tx.blockNumber !== null) {
+                // TX is mined — check if it reverted
+                if (tx.revert) {
+                    let revertMsg = '';
+                    try {
+                        // OPNet encodes revert as base64; the readable part starts after a short header
+                        const decoded = atob(tx.revert);
+                        // Extract printable ASCII substring
+                        revertMsg = decoded.replace(/[^\x20-\x7E]/g, '').trim();
+                    } catch { revertMsg = String(tx.revert); }
+                    console.error(`[Contract] TX mined in block ${tx.blockNumber} but REVERTED: ${revertMsg}`);
+                    throw new Error(`[Contract] TX reverted on-chain: ${revertMsg || 'unknown reason'} (block ${tx.blockNumber})`);
+                }
                 console.log(`[Contract] TX confirmed in block ${tx.blockNumber}`);
                 return;
             }
-        } catch {
+        } catch (err) {
+            // Re-throw revert errors — don't swallow them
+            if (err instanceof Error && err.message.includes('TX reverted')) throw err;
             // TX not found yet — keep polling
         }
         await new Promise(r => setTimeout(r, intervalMs));
@@ -489,7 +507,20 @@ export async function transferMotoToEscrow(
     console.log('[Contract] MOTO.transfer broadcast:', txId);
 
     // Wait for confirmation — backend needs the TX to be on-chain before crediting
-    await waitForTxConfirmation(provider, txId);
+    try {
+        await waitForTxConfirmation(provider, txId);
+    } catch (err) {
+        const msg = String(err?.message ?? err);
+        // Translate OPNet MLDSA revert into user-actionable error
+        if (msg.includes('MLDSA') || msg.includes('reassign') || msg.includes('legacy or hashed key')) {
+            throw new Error(
+                '[Deposit] MLDSA key mismatch — your wallet signature was rejected on-chain. ' +
+                'Try: 1) Update OP_WALLET to latest version  2) Re-import your seed phrase to regenerate MLDSA keys  ' +
+                '3) If the issue persists, use a fresh wallet address.'
+            );
+        }
+        throw err;  // re-throw other errors as-is
+    }
     console.log('[Contract] MOTO.transfer confirmed:', txId);
     return txId;
 }

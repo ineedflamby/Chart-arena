@@ -1,0 +1,13 @@
+{
+  "contractAddress": "opt1sqpntk7qxasmzweqztl935dz3gzzx05rr0548wvxp",
+  "fundingTx": "a39c96db958ab5becfcbe4548aa4ef41ad8b2becef895ec94aa25b6e21727632",
+  "revealTx": "d607c4ca56a6ae7e9b1378934ad47a9953d7cefa8fab0e1e69ebf614b4a79085",
+  "network": "testnet",
+  "version": "v6-guardian",
+  "token": "0xfd4473840751d58d9f8b73bdd57d6c5260453d5518bd7cd02d0a4cf3df9bf4dd",
+  "operator": "0xa0c11da051482996d983740c3faedf7f4ec5a3b55f7bfc548a0907c4d734a399",
+  "guardian": "0x32a4763c7f429849372686fa93fe88fb04755ed996afcbad53f5b6f7676c53c0",
+  "treasury": "0x360c8b2f8a0f18c72cb1107257e393745722f2ed8ac18b09b6c4d2f824a44f5a",
+  "prizePool": "0xb076f31447ab6e5ba385e472cc84c8144fa7b27b6317813ebaf6a79e3f1fe828",
+  "deployedAt": "2026-03-17T09:10:57.187Z"
+}

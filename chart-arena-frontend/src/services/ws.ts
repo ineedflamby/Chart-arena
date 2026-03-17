@@ -73,3 +73,5 @@ class GameWS {
 }
 
 export const gameWS = new GameWS();
+
+if (typeof window !== 'undefined') (window as any).gameWS = gameWS;

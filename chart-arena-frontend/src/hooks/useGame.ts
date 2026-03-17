@@ -983,6 +983,11 @@ export function useGame() {
             const message = str(msg, 'message', 'Unknown error');
             const action = str(msg, 'action', '');
             console.warn('[Chart Arena]', message, action ? `(action: ${action})` : '');
+
+            // Skip infrastructure noise — these aren't actionable for the user
+            // (deposit_required and other action-tagged errors still pass through)
+            if (!action && ['Invalid message format', 'Not authenticated', 'Too fast', 'Rate limited', 'Missing message type'].some(n => message.includes(n))) return;
+
             // V5-04 FIX: Surface errors to user via toast and return to lobby from any pre-game screen
             setState((s) => {
                 if (s.screen === 'onboarding') return { ...s, usernameError: message };

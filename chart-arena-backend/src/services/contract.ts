@@ -256,17 +256,29 @@ class ContractService {
 
     /**
      * C-03: Check if a TX has been confirmed (mined into a block).
-     * Returns the block number if confirmed, null if still pending or not found.
+     * Returns the block number if confirmed and NOT reverted, null if pending/not found.
+     * Throws if confirmed but reverted — caller must handle this.
      */
     public async isTransactionConfirmed(txHash: string): Promise<bigint | null> {
         this.ensureInit();
         try {
             const tx = await (this.provider! as any).getTransaction(txHash);
             if (tx && tx.blockNumber !== undefined && tx.blockNumber !== null) {
+                // Check if the TX reverted on-chain
+                if (tx.revert) {
+                    let revertMsg = 'unknown';
+                    try {
+                        const decoded = Buffer.from(tx.revert, 'base64').toString('utf-8');
+                        revertMsg = decoded.replace(/[^\x20-\x7E]/g, '').trim();
+                    } catch { revertMsg = String(tx.revert).slice(0, 100); }
+                    throw new Error(`TX ${txHash} reverted on-chain in block ${tx.blockNumber}: ${revertMsg}`);
+                }
                 return BigInt(tx.blockNumber);
             }
             return null;
-        } catch {
+        } catch (err) {
+            // Re-throw revert errors — only swallow "not found" errors
+            if (err instanceof Error && err.message.includes('reverted on-chain')) throw err;
             return null;
         }
     }
@@ -531,24 +543,61 @@ class ContractService {
             }
             logger.info(TAG, `Transfer TX confirmed in block ${tx.blockNumber}`);
 
+            // ── REVERT CHECK: TX mined but failed on-chain ──
+            if (tx.revert) {
+                let revertMsg = 'unknown';
+                try {
+                    const decoded = Buffer.from(tx.revert, 'base64').toString('utf-8');
+                    revertMsg = decoded.replace(/[^\x20-\x7E]/g, '').trim();
+                } catch { revertMsg = String(tx.revert).slice(0, 120); }
+                logger.error(TAG, `DEPOSIT REJECTED: Transfer TX ${txHash} reverted on-chain: ${revertMsg}`);
+                throw new Error(`Transfer TX reverted on-chain: ${revertMsg}`);
+            }
+
             // ── C-01 CHECK 1: Verify this TX targets the MOTO token contract ──
+            // OPNet RPC returns contractAddress as bech32 (opt1s...) but config may
+            // store it as hex (0x...). Also check contractPublicKey (base64 → hex).
             const txTarget = String(
                 tx.contractAddress ?? tx.to ?? tx.address ?? ''
             ).toLowerCase();
             const motoLower = config.motoToken.toLowerCase();
-            // OPNet TX target may be bech32 (opt1...) or hex (0x...) — check both
-            if (txTarget && txTarget !== motoLower) {
-                // Also try comparing without 0x prefix
-                const txTargetClean = txTarget.replace(/^0x/, '');
-                const motoClean = motoLower.replace(/^0x/, '');
-                if (txTargetClean !== motoClean) {
-                    const msg = `TX ${txHash} targets contract ${txTarget}, not MOTO token ${motoLower}`;
-                    if (!config.devMode) {
-                        logger.error(TAG, `DEPOSIT REJECTED: ${msg}`);
-                        throw new Error('Transaction is not a MOTO token transfer. Deposit rejected.');
-                    }
-                    logger.warn(TAG, `DEV_MODE: ${msg} — continuing (contract address formats may differ on testnet)`);
+
+            // Helper: base64 → hex string
+            const b64ToHex = (b64: string): string => {
+                try {
+                    return '0x' + Buffer.from(b64, 'base64').toString('hex');
+                } catch { return ''; }
+            };
+
+            // Build a set of normalized identifiers for the TX target contract
+            const txTargetIds = new Set<string>();
+            txTargetIds.add(txTarget);
+            txTargetIds.add(txTarget.replace(/^0x/, ''));
+            // contractPublicKey/contractSecret are base64 of the hex contract ID
+            if (tx.contractPublicKey) txTargetIds.add(b64ToHex(tx.contractPublicKey).toLowerCase());
+            if (tx.contractSecret) txTargetIds.add(b64ToHex(tx.contractSecret).toLowerCase());
+
+            // Build set of normalized MOTO identifiers from config
+            const motoIds = new Set<string>();
+            motoIds.add(motoLower);
+            motoIds.add(motoLower.replace(/^0x/, ''));
+
+            // Check if ANY txTarget identifier matches ANY moto identifier
+            let contractMatch = false;
+            for (const tid of txTargetIds) {
+                for (const mid of motoIds) {
+                    if (tid && mid && tid === mid) { contractMatch = true; break; }
                 }
+                if (contractMatch) break;
+            }
+
+            if (!contractMatch && txTarget) {
+                const msg = `TX ${txHash} targets contract ${txTarget}, not MOTO token ${motoLower}`;
+                if (!config.devMode) {
+                    logger.error(TAG, `DEPOSIT REJECTED: ${msg}`);
+                    throw new Error('Transaction is not a MOTO token transfer. Deposit rejected.');
+                }
+                logger.warn(TAG, `DEV_MODE: ${msg} — continuing (contract address formats may differ on testnet)`);
             }
 
             // ── Try to decode transfer amount + sender + recipient from TX events/data ──
@@ -570,18 +619,40 @@ class ContractService {
             };
 
             // Attempt 1: Decoded receipt events
+            // OPNet OP-20 events use type "Transferred" (not "Transfer")
+            // and data is base64-encoded binary: from(32 bytes) + to(32 bytes) + amount(32 bytes)
             const events = tx.receipt?.events || tx.events;
             if (events && Array.isArray(events)) {
                 for (const event of events) {
-                    if (event.type === 'Transfer' || event.name === 'Transfer') {
+                    const etype = (event.type || event.name || '').toLowerCase();
+                    if (etype === 'transfer' || etype === 'transferred') {
+                        // Try decoded fields first (future SDK versions may provide these)
                         const eventAmount = event.amount ?? event.value ?? event.data?.amount;
                         if (eventAmount !== undefined) {
                             verifiedAmount = BigInt(eventAmount);
-                            // Extract sender/recipient from event
                             verifiedFrom = addrStr(event.from ?? event.data?.from ?? event.sender ?? event.data?.sender);
                             verifiedTo = addrStr(event.to ?? event.data?.to ?? event.recipient ?? event.data?.recipient);
-                            logger.info(TAG, `Transfer event: amount=${verifiedAmount}, from=${verifiedFrom ?? 'N/A'}, to=${verifiedTo ?? 'N/A'}`);
+                            logger.info(TAG, `Transfer event (decoded): amount=${verifiedAmount}, from=${verifiedFrom ?? 'N/A'}, to=${verifiedTo ?? 'N/A'}`);
                             break;
+                        }
+                        // Raw binary data: base64 → Buffer → from(32) + to(32) + amount(32)
+                        const rawData = typeof event.data === 'string' ? event.data : null;
+                        if (rawData) {
+                            try {
+                                const buf = Buffer.from(rawData, 'base64');
+                                if (buf.length >= 96) {
+                                    const fromHex = '0x' + buf.subarray(0, 32).toString('hex');
+                                    const toHex = '0x' + buf.subarray(32, 64).toString('hex');
+                                    const amountHex = '0x' + buf.subarray(64, 96).toString('hex');
+                                    verifiedAmount = BigInt(amountHex);
+                                    verifiedFrom = fromHex.toLowerCase();
+                                    verifiedTo = toHex.toLowerCase();
+                                    logger.info(TAG, `Transfer event (raw binary): amount=${verifiedAmount}, from=${verifiedFrom.slice(0, 16)}…, to=${verifiedTo.slice(0, 16)}…`);
+                                    break;
+                                }
+                            } catch (decodeErr) {
+                                logger.warn(TAG, `Failed to decode raw event data: ${decodeErr}`);
+                            }
                         }
                     }
                 }
@@ -604,16 +675,47 @@ class ContractService {
                 logger.info(TAG, `Transfer properties: amount=${verifiedAmount}, from=${verifiedFrom ?? 'N/A'}, to=${verifiedTo ?? 'N/A'}`);
             }
 
-            // Last resort for sender: TX-level signer field
+            // Last resort for sender: TX-level signer field (may be base64)
             if (!verifiedFrom) {
-                verifiedFrom = addrStr(tx.from ?? tx.sender ?? tx.signer);
+                const rawFrom = tx.from ?? tx.sender ?? tx.signer;
+                if (rawFrom) {
+                    verifiedFrom = addrStr(rawFrom);
+                    // tx.from is often base64-encoded public key — also try decoding
+                    if (typeof rawFrom === 'string' && !rawFrom.startsWith('0x') && !rawFrom.startsWith('opt')) {
+                        try {
+                            const fromHex = '0x' + Buffer.from(rawFrom, 'base64').toString('hex');
+                            verifiedFrom = fromHex.toLowerCase();
+                        } catch { /* keep original */ }
+                    }
+                }
             }
+
+            // ── Cross-format address comparison helper ──
+            // OPNet addresses can be bech32 (opt1p...), hex (0x...), or base64.
+            // Resolve both sides to hex via getPublicKeyInfo for reliable comparison.
+            const resolveToHex = async (addr: string): Promise<string> => {
+                const lower = addr.toLowerCase();
+                // Already hex
+                if (lower.startsWith('0x')) return lower;
+                // Bech32 — resolve via provider
+                try {
+                    const isContract = lower.startsWith('opt1s') || lower.startsWith('opt1q')
+                        || lower.startsWith('opnet1s') || lower.startsWith('opnet1q');
+                    const info = await this.provider!.getPublicKeyInfo(addr, isContract);
+                    if (info && (info as any).publicKey) {
+                        const pubBytes: Uint8Array = (info as any).publicKey;
+                        return '0x' + Array.from(pubBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                    }
+                } catch { /* fall through */ }
+                return lower;
+            };
 
             // ── C-01 CHECK 2: Verify the sender matches expectedSender ──
             if (verifiedFrom) {
-                const expectedLower = expectedSender.toLowerCase();
-                if (verifiedFrom !== expectedLower) {
-                    const msg = `Transfer sender ${verifiedFrom} does not match expected sender ${expectedLower}`;
+                const expectedHex = await resolveToHex(expectedSender);
+                const fromHex = await resolveToHex(verifiedFrom);
+                if (fromHex !== expectedHex) {
+                    const msg = `Transfer sender ${verifiedFrom} does not match expected sender ${expectedSender} (hex: ${fromHex} vs ${expectedHex})`;
                     if (!config.devMode) {
                         logger.error(TAG, `DEPOSIT REJECTED (sender mismatch): ${msg}. TX: ${txHash}`);
                         throw new Error('Transfer sender does not match your address. Someone else\'s TX cannot be used.');
@@ -631,9 +733,10 @@ class ContractService {
 
             // ── C-01 CHECK 3: Verify the recipient is the escrow contract ──
             if (verifiedTo) {
-                const escrowLower = config.escrowAddress.toLowerCase();
-                if (verifiedTo !== escrowLower) {
-                    const msg = `Transfer recipient ${verifiedTo} is not the escrow ${escrowLower}`;
+                const escrowHex = await resolveToHex(config.escrowAddress);
+                const toHex = await resolveToHex(verifiedTo);
+                if (toHex !== escrowHex) {
+                    const msg = `Transfer recipient ${verifiedTo} is not the escrow ${config.escrowAddress} (hex: ${toHex} vs ${escrowHex})`;
                     if (!config.devMode) {
                         logger.error(TAG, `DEPOSIT REJECTED (wrong recipient): ${msg}. TX: ${txHash}`);
                         throw new Error('Transfer was not sent to the escrow contract. Deposit rejected.');
