@@ -28,7 +28,8 @@ import { onMatchComplete } from './points-engine.js';
 import { appendFileSync, mkdirSync } from 'fs';
 import { resolve } from 'path';
 import { getAllTierStatus } from './buy-in-tiers.js';
-import { updateEloRatings } from './elo.js';
+// M-05 FIX: ELO import removed — ELO is dead code per project spec (not a planned feature)
+// import { updateEloRatings } from './elo.js';
 
 const TAG = 'Settlement';
 
@@ -41,16 +42,59 @@ export function loadSettledMatches(): void {
     for (const id of rows) settledMatches.add(id);
     logger.info(TAG, `Loaded ${settledMatches.size} settled matches from DB`);
 
-    // NEW-7 FIX: Detect matches stuck mid-settlement (txHash='pending').
-    // Remove guard so they can be retried if the game is still active.
+    // H-02 FIX: Do NOT remove pending guards here. They are reconciled async
+    // after contractService.init() via reconcilePendingSettlements().
     const pending = db.getPendingSettlements();
     if (pending.length > 0) {
-        for (const id of pending) {
-            settledMatches.delete(id);
-            logger.warn(TAG, `⚠️  Found pending settlement: ${id} — removed guard to allow retry`);
-        }
-        logger.warn(TAG, `${pending.length} pending settlement(s) found. Verify on-chain.`);
+        logger.warn(TAG, `${pending.length} pending settlement(s) found — will reconcile after contract init.`);
     }
+}
+
+/**
+ * H-02 FIX: Reconcile pending settlements by checking on-chain status.
+ * Call AFTER contractService.init().
+ *
+ * Old behavior: blindly removed guard → could re-settle already-settled matches.
+ * New behavior: checks on-chain first:
+ *   - If on-chain status is SETTLED → keep guard (already done), confirm off-chain payouts.
+ *   - If on-chain status is LOCKED → remove guard so retry can happen.
+ *   - If on-chain status is REFUNDED/CANCELLED → keep guard, log warning.
+ */
+export async function reconcilePendingSettlements(): Promise<void> {
+    const pending = db.getPendingSettlements();
+    if (pending.length === 0) return;
+
+    logger.info(TAG, `Reconciling ${pending.length} pending settlement(s)...`);
+    for (const matchIdStr of pending) {
+        try {
+            const matchId = BigInt(matchIdStr);
+            const info = await contractService.getMatchInfo(matchId);
+
+            if (info.status === OnChainStatus.SETTLED) {
+                // Already settled on-chain — keep guard, confirm any pending payouts
+                logger.info(TAG, `  Match ${matchIdStr}: SETTLED on-chain — keeping guard, confirming off-chain payouts`);
+                // The settled_matches DB row has txHash='pending' — we can't recover the real hash
+                // but the match IS settled, so keep it guarded.
+            } else if (info.status === OnChainStatus.LOCKED) {
+                // Not yet settled — safe to retry
+                settledMatches.delete(matchIdStr);
+                logger.warn(TAG, `  Match ${matchIdStr}: still LOCKED on-chain — removed guard for retry`);
+            } else if (info.status === OnChainStatus.REFUNDED) {
+                logger.warn(TAG, `  Match ${matchIdStr}: REFUNDED on-chain — keeping guard`);
+            } else if (info.status === OnChainStatus.CANCELLED) {
+                logger.warn(TAG, `  Match ${matchIdStr}: CANCELLED on-chain — keeping guard`);
+            } else {
+                logger.warn(TAG, `  Match ${matchIdStr}: unexpected status ${info.status} — keeping guard`);
+            }
+        } catch (err) {
+            // Can't reach the chain — keep the guard (conservative)
+            logger.error(TAG, `  Match ${matchIdStr}: on-chain check failed — keeping guard. Error: ${err}`);
+        }
+    }
+    logger.info(TAG, `Reconciliation complete.`);
+
+    // C-03: Also check for any pending off-chain payouts that need confirmation
+    await confirmAllPendingPayouts();
 }
 
 /** Bug 4.5: Persist a match ID to both memory and DB. */
@@ -68,6 +112,91 @@ function unmarkSettled(matchIdStr: string): void {
 
 export function isAlreadySettled(matchIdStr: string): boolean {
     return settledMatches.has(matchIdStr);
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// C-03 FIX: TX Confirmation Poller
+// Upgrades 'pending' off-chain payouts to 'confirmed' once the TX is mined.
+// ═══════════════════════════════════════════════════════════════════
+
+const CONFIRM_POLL_INTERVAL_MS = 15_000; // Check every 15s
+const CONFIRM_MAX_RETRIES = 40;          // Give up after ~10 minutes (40 × 15s)
+
+/** Track in-flight confirmation checks to avoid duplicates */
+const pendingConfirmations = new Map<string, { retries: number; matchIdStr: string }>();
+
+/**
+ * Schedule a confirmation check for a settlement TX.
+ * Called immediately after broadcasting the settlement.
+ */
+function scheduleConfirmationCheck(txHash: string, matchIdStr: string): void {
+    if (pendingConfirmations.has(txHash)) return; // already tracking
+    pendingConfirmations.set(txHash, { retries: 0, matchIdStr });
+    logger.info(TAG, `Scheduled confirmation check for TX ${txHash} (match ${matchIdStr})`);
+}
+
+/**
+ * Check all pending TXs and confirm those that are mined.
+ */
+async function confirmAllPendingPayouts(): Promise<void> {
+    const pendingTxHashes = db.getPendingPayoutTxHashes();
+    if (pendingTxHashes.length === 0) return;
+
+    logger.info(TAG, `Checking ${pendingTxHashes.length} pending payout TX(s)...`);
+    for (const txHash of pendingTxHashes) {
+        try {
+            const blockNum = await contractService.isTransactionConfirmed(txHash);
+            if (blockNum !== null) {
+                const confirmed = db.confirmPendingPayouts(txHash);
+                if (confirmed > 0) {
+                    logger.info(TAG, `✅ Confirmed ${confirmed} payout(s) for TX ${txHash} (block ${blockNum})`);
+                    pendingConfirmations.delete(txHash);
+                }
+            }
+        } catch (err) {
+            logger.warn(TAG, `Confirmation check failed for TX ${txHash}: ${err}`);
+        }
+    }
+}
+
+/**
+ * Start the background confirmation poller.
+ * Call once after contractService.init().
+ */
+export function startSettlementConfirmationPoller(): void {
+    setInterval(async () => {
+        try {
+            // Check tracked in-flight TXs
+            for (const [txHash, state] of pendingConfirmations) {
+                try {
+                    const blockNum = await contractService.isTransactionConfirmed(txHash);
+                    if (blockNum !== null) {
+                        const confirmed = db.confirmPendingPayouts(txHash);
+                        if (confirmed > 0) {
+                            logger.info(TAG, `✅ TX confirmed: ${txHash} (block ${blockNum}) — upgraded ${confirmed} payout(s)`);
+                            writeAuditLog({ event: 'PAYOUT_CONFIRMED', txHash, confirmedCount: confirmed, blockNumber: blockNum.toString() });
+                        }
+                        pendingConfirmations.delete(txHash);
+                    } else {
+                        state.retries++;
+                        if (state.retries >= CONFIRM_MAX_RETRIES) {
+                            logger.error(TAG, `⚠️  TX ${txHash} (match ${state.matchIdStr}) never confirmed after ${CONFIRM_MAX_RETRIES} checks. Manual review needed.`);
+                            writeAuditLog({ event: 'PAYOUT_CONFIRMATION_TIMEOUT', txHash, matchId: state.matchIdStr });
+                            pendingConfirmations.delete(txHash);
+                        }
+                    }
+                } catch (err) {
+                    logger.warn(TAG, `Confirmation poll error for ${txHash}: ${err}`);
+                }
+            }
+
+            // Also sweep any pending entries in DB not tracked in memory (e.g., from pre-restart)
+            await confirmAllPendingPayouts();
+        } catch (err) {
+            logger.error(TAG, 'Confirmation poller error', err);
+        }
+    }, CONFIRM_POLL_INTERVAL_MS);
+    logger.info(TAG, `Settlement confirmation poller started (interval: ${CONFIRM_POLL_INTERVAL_MS / 1000}s)`);
 }
 
 // ── Audit log ──
@@ -256,19 +385,27 @@ export async function settleMatch(match: GameMatch, standings: Standing[]): Prom
         // Bug 4.11: Use retry wrapper for stale-data recovery
         const txHash = await contractService.settleMatchWithRetry(match.matchId, logHash, payoutMap);
 
-        // SPRINT 2: Record payouts in off-chain ledger (instant balance update)
+        // C-03 FIX: Record payouts as PENDING — confirmed after TX is mined.
+        // Players see pending balance immediately but can't queue with it.
         for (const p of payouts) {
             if (p.amount > 0n) {
-                db.recordEscrowChange(p.address, p.amount.toString(), 'match_payout', matchIdStr, txHash);
+                db.recordEscrowChange(p.address, p.amount.toString(), 'match_payout', matchIdStr, txHash, 'pending');
             }
         }
-        logger.info(TAG, `Off-chain ledger: credited payouts for match ${matchIdStr}`);
+        logger.info(TAG, `Off-chain ledger: recorded PENDING payouts for match ${matchIdStr} (TX: ${txHash})`);
 
-        // SPRINT 3: Push updated balance to each player
+        // C-03 FIX: Push balance with pending breakdown to each player
         for (const p of payouts) {
-            const newBalance = db.getOffchainEscrowBalance(p.address);
-            sendToPlayer(p.address, ServerMsg.ESCROW_BALANCE, { balance: newBalance.toString(), source: 'offchain' });
+            const { confirmed, pending } = db.getOffchainDisplayBalance(p.address);
+            sendToPlayer(p.address, ServerMsg.ESCROW_BALANCE, {
+                balance: confirmed.toString(),
+                pending: pending.toString(),
+                source: 'offchain',
+            });
         }
+
+        // Schedule TX confirmation check (C-03: will upgrade pending → confirmed)
+        scheduleConfirmationCheck(txHash, matchIdStr);
 
         // Update the DB record with actual TX hash
         db.addSettledMatch(matchIdStr, txHash);
@@ -346,16 +483,9 @@ export async function runPostSettlementWork(
         }
         logger.info(TAG, `Player stats updated for ${standings.filter(s => !isBotAddress(s.address)).length} human player(s)`);
 
-        // 1b. DEAD-01 FIX: Update ELO ratings (skip if all players are bots)
-        const humanStandings = standings.filter(s => !isBotAddress(s.address));
-        if (humanStandings.length >= 2) {
-            const eloChanges = updateEloRatings(humanStandings, format);
-            for (const change of eloChanges) {
-                sendToPlayer(change.address, ServerMsg.PORTFOLIO_UPDATE, {
-                    eloUpdate: { oldElo: change.oldElo, newElo: change.newElo, delta: change.delta },
-                });
-            }
-        }
+        // M-05 FIX: ELO code removed from settlement path.
+        // ELO is not a planned feature — dead code that was actively modifying state and sending WS messages.
+        // The elo.ts module still exists for potential future use but is no longer called here.
 
         // 2. Check milestones (play_10, win_5, etc.) for airdrop quest points
         for (const s of standings) {

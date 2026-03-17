@@ -36,6 +36,7 @@ export const config = {
     network: resolveNetwork(networkName),
     rpcUrl: env('RPC_URL', 'https://testnet.opnet.org'),
     operatorIndex: envInt('OPERATOR_INDEX', 1),
+    guardianIndex: envInt('GUARDIAN_INDEX', 0),
     // V5-01 FIX: Default must match the deployed v5 contract (same as frontend)
     escrowAddress: env('ESCROW_ADDRESS', 'opt1sqqkgy2qk9lvsc6d4lz2f5y8x7vj5dmmd4y9j82aq'),
     motoToken: env('MOTO_TOKEN', '0xfd4473840751d58d9f8b73bdd57d6c5260453d5518bd7cd02d0a4cf3df9bf4dd'),
@@ -76,6 +77,29 @@ export const config = {
     // L-02: Crash if DEV_MODE is on with mainnet
     ...(networkName === 'mainnet' && envBool('DEV_MODE', false) ? (() => { throw new Error('FATAL: DEV_MODE cannot be enabled on mainnet'); })() : {}),
 
+    // M-03 FIX: Crash if RPC_URL and NETWORK are contradictory.
+    // Catches the most dangerous misconfiguration: NETWORK=testnet (default) with a mainnet RPC.
+    ...(() => {
+        const rpcLower = env('RPC_URL', 'https://testnet.opnet.org').toLowerCase();
+        const rpcLooksMainnet = rpcLower.includes('mainnet') && !rpcLower.includes('testnet');
+        const rpcLooksTestnet = rpcLower.includes('testnet') || rpcLower.includes('signet');
+        if (networkName === 'testnet' && rpcLooksMainnet) {
+            throw new Error(
+                'FATAL: NETWORK=testnet but RPC_URL appears to be a mainnet endpoint.\n' +
+                `   RPC_URL: ${rpcLower}\n` +
+                '   Set NETWORK=mainnet if this is intentional, or fix RPC_URL.'
+            );
+        }
+        if (networkName === 'mainnet' && rpcLooksTestnet) {
+            throw new Error(
+                'FATAL: NETWORK=mainnet but RPC_URL appears to be a testnet endpoint.\n' +
+                `   RPC_URL: ${rpcLower}\n` +
+                '   Set NETWORK=testnet if this is intentional, or fix RPC_URL.'
+            );
+        }
+        return {};
+    })(),
+
     // SEC-2b: Crash if ALLOWED_ORIGIN is still the placeholder in production
     ...((!envBool('DEV_MODE', false) && env('ALLOWED_ORIGIN', 'http://localhost:5173') === 'https://yourdomain.com')
         ? (() => { console.warn('\n⚠️  WARNING: ALLOWED_ORIGIN is set to placeholder "https://yourdomain.com".\n   Set it to your actual frontend domain for production.\n'); return {}; })()
@@ -104,11 +128,14 @@ export function loadMnemonic(): string {
 
     // Priority 2: File fallback (for local dev only)
     if (existsSync(config.mnemonicPath)) {
-        // SEC-7 FIX: Reject file-based mnemonic in production
-        if (process.env['NODE_ENV'] === 'production') {
+        // M-02 FIX: Default-deny. Only allow file-based loading if NODE_ENV is explicitly 'development' or 'test'.
+        // Old code blocked only NODE_ENV=production, which meant "unset" allowed file loading on a prod VPS.
+        const nodeEnv = process.env['NODE_ENV'] ?? '';
+        if (nodeEnv !== 'development' && nodeEnv !== 'test') {
             throw new Error(
-                'SECURITY: File-based mnemonic loading is blocked in production.\n' +
-                '   Set OPERATOR_MNEMONIC env var instead.\n' +
+                'SECURITY: File-based mnemonic loading is only allowed when NODE_ENV=development or NODE_ENV=test.\n' +
+                `   Current NODE_ENV: ${nodeEnv || '(not set)'}\n` +
+                '   Set OPERATOR_MNEMONIC env var instead for production/staging.\n' +
                 '   File found at: ' + config.mnemonicPath
             );
         }

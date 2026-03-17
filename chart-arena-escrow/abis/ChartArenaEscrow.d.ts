@@ -30,9 +30,29 @@ export type OperatorPullDeposit = CallResult<
 >;
 
 /**
- * @description Represents the result of the operatorCreditDeposit function call.
+ * @description Represents the result of the requestCredit function call.
  */
-export type OperatorCreditDeposit = CallResult<
+export type RequestCredit = CallResult<
+    {
+        creditId: bigint;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
+ * @description Represents the result of the confirmCredit function call.
+ */
+export type ConfirmCredit = CallResult<
+    {
+        success: boolean;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
+ * @description Represents the result of the cancelCredit function call.
+ */
+export type CancelCredit = CallResult<
     {
         success: boolean;
     },
@@ -150,6 +170,26 @@ export type SetPrizePool = CallResult<
 >;
 
 /**
+ * @description Represents the result of the setGuardian function call.
+ */
+export type SetGuardian = CallResult<
+    {
+        success: boolean;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
+ * @description Represents the result of the setDailyCreditCap function call.
+ */
+export type SetDailyCreditCap = CallResult<
+    {
+        success: boolean;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
  * @description Represents the result of the getBalance function call.
  */
 export type GetBalance = CallResult<
@@ -186,13 +226,37 @@ export type GetJackpot = CallResult<
     OPNetEvent<never>[]
 >;
 
+/**
+ * @description Represents the result of the getCreditInfo function call.
+ */
+export type GetCreditInfo = CallResult<
+    {
+        status: bigint;
+        amount: bigint;
+    },
+    OPNetEvent<never>[]
+>;
+
+/**
+ * @description Represents the result of the getDailyCreditInfo function call.
+ */
+export type GetDailyCreditInfo = CallResult<
+    {
+        cap: bigint;
+        used: bigint;
+    },
+    OPNetEvent<never>[]
+>;
+
 // ------------------------------------------------------------------
 // IChartArenaEscrow
 // ------------------------------------------------------------------
 export interface IChartArenaEscrow extends IOP_NETContract {
     deposit(amount: bigint): Promise<Deposit>;
     operatorPullDeposit(player: Address, amount: bigint): Promise<OperatorPullDeposit>;
-    operatorCreditDeposit(player: Address, amount: bigint): Promise<OperatorCreditDeposit>;
+    requestCredit(player: Address, amount: bigint): Promise<RequestCredit>;
+    confirmCredit(creditId: bigint): Promise<ConfirmCredit>;
+    cancelCredit(creditId: bigint): Promise<CancelCredit>;
     operatorCreateMatch(
         buyIn: bigint,
         mode: bigint,
@@ -210,7 +274,11 @@ export interface IChartArenaEscrow extends IOP_NETContract {
     setOperator(newOperator: Address): Promise<SetOperator>;
     setTreasury(newTreasury: Address): Promise<SetTreasury>;
     setPrizePool(newPrizePool: Address): Promise<SetPrizePool>;
+    setGuardian(newGuardian: Address): Promise<SetGuardian>;
+    setDailyCreditCap(newCap: bigint): Promise<SetDailyCreditCap>;
     getBalance(account: Address): Promise<GetBalance>;
     getMatchInfo(matchId: bigint): Promise<GetMatchInfo>;
     getJackpot(): Promise<GetJackpot>;
+    getCreditInfo(creditId: bigint): Promise<GetCreditInfo>;
+    getDailyCreditInfo(): Promise<GetDailyCreditInfo>;
 }

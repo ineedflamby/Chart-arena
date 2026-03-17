@@ -306,20 +306,72 @@ class AppDatabase {
     // ── SPRINT 2 FIX: Off-chain escrow ledger ──
     // Tracks balance changes INSTANTLY (no waiting for block confirmation).
     // Types: 'deposit' | 'match_debit' | 'match_payout' | 'withdraw'
+    // C-03 FIX: Added 'status' field — 'confirmed' (default) or 'pending'.
+    //           Pending payouts are recorded at settlement broadcast, confirmed after TX confirmation.
 
-    /** Record a balance change in the off-chain ledger */
-    public recordEscrowChange(address: string, amount: string, type: string, matchId?: string, txHash?: string): void {
+    /** Record a balance change in the off-chain ledger.
+     *  C-03: status defaults to 'confirmed'. Settlement payouts use 'pending' until TX confirms.
+     */
+    public recordEscrowChange(address: string, amount: string, type: string, matchId?: string, txHash?: string, status: string = 'confirmed'): void {
         this.db.prepare(
-            'INSERT INTO escrow_ledger (address, amount, type, match_id, tx_hash) VALUES (?, ?, ?, ?, ?)'
-        ).run(address, amount, type, matchId ?? null, txHash ?? null);
+            'INSERT INTO escrow_ledger (address, amount, type, match_id, tx_hash, status) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(address, amount, type, matchId ?? null, txHash ?? null, status);
     }
 
-    /** Get off-chain escrow balance (sum of all ledger entries) */
+    /**
+     * M-01 FIX: Get off-chain escrow balance using JS BigInt summation.
+     * Old code used CAST(amount AS INTEGER) which overflows at ~9.2 MOTO (9.2e18 wei).
+     * C-03 FIX: Only counts 'confirmed' entries (excludes 'pending' payouts).
+     */
     public getOffchainEscrowBalance(address: string): bigint {
-        const row = this.db.prepare(
-            'SELECT COALESCE(SUM(CAST(amount AS INTEGER)), 0) as balance FROM escrow_ledger WHERE address = ?'
-        ).get(address) as { balance: number | bigint };
-        return BigInt(row.balance);
+        const rows = this.db.prepare(
+            "SELECT amount FROM escrow_ledger WHERE address = ? AND status = 'confirmed'"
+        ).all(address) as { amount: string }[];
+        return rows.reduce((sum, r) => {
+            try { return sum + BigInt(r.amount); }
+            catch { return sum; } // skip malformed entries
+        }, 0n);
+    }
+
+    /**
+     * C-03: Get display balance INCLUDING pending payouts (for UI "available + pending" display).
+     * Players see their pending winnings but can't queue with them until confirmed.
+     */
+    public getOffchainDisplayBalance(address: string): { confirmed: bigint; pending: bigint } {
+        const rows = this.db.prepare(
+            'SELECT amount, status FROM escrow_ledger WHERE address = ?'
+        ).all(address) as { amount: string; status: string }[];
+        let confirmed = 0n;
+        let pending = 0n;
+        for (const r of rows) {
+            try {
+                const amt = BigInt(r.amount);
+                if (r.status === 'pending') pending += amt;
+                else confirmed += amt;
+            } catch { /* skip malformed */ }
+        }
+        return { confirmed, pending };
+    }
+
+    /**
+     * C-03: Confirm pending payouts after TX is mined.
+     * Called by the settlement confirmation poller.
+     */
+    public confirmPendingPayouts(txHash: string): number {
+        const result = this.db.prepare(
+            "UPDATE escrow_ledger SET status = 'confirmed' WHERE tx_hash = ? AND status = 'pending'"
+        ).run(txHash);
+        return result.changes;
+    }
+
+    /**
+     * C-03: Get all unique TX hashes that have pending entries (for the confirmation poller).
+     */
+    public getPendingPayoutTxHashes(): string[] {
+        const rows = this.db.prepare(
+            "SELECT DISTINCT tx_hash FROM escrow_ledger WHERE status = 'pending' AND tx_hash IS NOT NULL"
+        ).all() as { tx_hash: string }[];
+        return rows.map(r => r.tx_hash);
     }
 
     /** Get escrow ledger history for a player (admin/debug) */
@@ -852,6 +904,40 @@ class AppDatabase {
     }
 
     // ═══════════════════════════════════════════════════════════════
+    // H-01 FIX: KNOWN PUBKEYS (first-seen pubkey pinning)
+    // ═══════════════════════════════════════════════════════════════
+
+    /**
+     * Get the stored pubkey for an address. Returns null if never seen.
+     */
+    public getKnownPubkey(address: string): string | null {
+        const row = this.db.prepare(
+            'SELECT pubkey_hex FROM known_pubkeys WHERE address = ?'
+        ).get(address) as { pubkey_hex: string } | undefined;
+        return row?.pubkey_hex ?? null;
+    }
+
+    /**
+     * Store a pubkey for an address. INSERT OR IGNORE — first write wins.
+     * Returns true if this was a new entry, false if already existed.
+     */
+    public setKnownPubkey(address: string, pubkeyHex: string, source: string = 'first_auth'): boolean {
+        const result = this.db.prepare(
+            'INSERT OR IGNORE INTO known_pubkeys (address, pubkey_hex, source) VALUES (?, ?, ?)'
+        ).run(address, pubkeyHex, source);
+        return result.changes > 0;
+    }
+
+    /**
+     * Update the stored pubkey (only used when on-chain verification confirms a different key).
+     */
+    public updateKnownPubkey(address: string, pubkeyHex: string, source: string = 'onchain_verified'): void {
+        this.db.prepare(
+            'INSERT OR REPLACE INTO known_pubkeys (address, pubkey_hex, source) VALUES (?, ?, ?)'
+        ).run(address, pubkeyHex, source);
+    }
+
+    // ═══════════════════════════════════════════════════════════════
     // CLEANUP
     // ═══════════════════════════════════════════════════════════════
 
@@ -1101,6 +1187,7 @@ class AppDatabase {
                 type TEXT NOT NULL,
                 match_id TEXT,
                 tx_hash TEXT,
+                status TEXT NOT NULL DEFAULT 'confirmed',
                 created_at INTEGER NOT NULL DEFAULT (unixepoch())
             );
             CREATE INDEX IF NOT EXISTS idx_escrow_ledger_address ON escrow_ledger(address);
@@ -1151,11 +1238,18 @@ class AppDatabase {
                     type TEXT NOT NULL,
                     match_id TEXT,
                     tx_hash TEXT,
+                    status TEXT NOT NULL DEFAULT 'confirmed',
                     created_at INTEGER NOT NULL DEFAULT (unixepoch())
                 );
                 CREATE INDEX IF NOT EXISTS idx_escrow_ledger_address ON escrow_ledger(address);
             `);
         } catch { /* table already exists */ }
+
+        // Migration: C-03 FIX — add status column to escrow_ledger (safe for existing DBs)
+        try {
+            this.db.exec(`ALTER TABLE escrow_ledger ADD COLUMN status TEXT NOT NULL DEFAULT 'confirmed'`);
+            logger.info(TAG, 'Migration: added status column to escrow_ledger');
+        } catch { /* column already exists — expected after first run */ }
 
         // Migration: SPRINT 3 — clean up ancient pending settlements (>1 hour old)
         try {
@@ -1166,6 +1260,18 @@ class AppDatabase {
                 logger.info(TAG, `Cleared ${cleaned.changes} stale pending settlement(s) older than 1 hour`);
             }
         } catch { /* ignore */ }
+
+        // Migration: H-01 FIX — known_pubkeys table (first-seen pubkey pinning)
+        try {
+            this.db.exec(`
+                CREATE TABLE IF NOT EXISTS known_pubkeys (
+                    address TEXT PRIMARY KEY,
+                    pubkey_hex TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'first_auth',
+                    created_at INTEGER NOT NULL DEFAULT (unixepoch())
+                );
+            `);
+        } catch { /* table already exists */ }
     }
 }
 

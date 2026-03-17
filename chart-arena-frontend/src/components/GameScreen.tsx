@@ -207,10 +207,10 @@ export function GameScreen({ state, onTrade, onUseItem, onSelectTarget, onCancel
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#8b7fb0', padding: '2px 0' }}>
                         <span>Position</span>
                         <span style={{
-                            color: state.positionStatus === 'LONG' ? '#82c4a0' : state.positionStatus === 'SHORT' ? '#F4B8CE' : '#554d73',
+                            color: state.positionStatus === 'LONG' ? '#82c4a0' : state.positionStatus === 'SHORT' ? '#F4B8CE' : state.positionStatus === 'HIDDEN' ? '#92B4F4' : '#554d73',
                             fontWeight: 700,
                         }}>
-                            {state.positionStatus === 'FLAT' ? '⚪ Flat' : state.positionStatus === 'LONG' ? '🟢 Long' : '🔴 Short'}
+                            {state.positionStatus === 'FLAT' ? '⚪ Flat' : state.positionStatus === 'LONG' ? '🟢 Long' : state.positionStatus === 'SHORT' ? '🔴 Short' : '👻 Ghost'}
                         </span>
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: '#8b7fb0', padding: '2px 0' }}>

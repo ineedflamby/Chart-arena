@@ -19,11 +19,23 @@ export const ChartArenaEscrowAbi = [
         type: BitcoinAbiTypes.Function,
     },
     {
-        name: 'operatorCreditDeposit',
+        name: 'requestCredit',
         inputs: [
             { name: 'player', type: ABIDataTypes.ADDRESS },
             { name: 'amount', type: ABIDataTypes.UINT256 },
         ],
+        outputs: [{ name: 'creditId', type: ABIDataTypes.UINT256 }],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
+        name: 'confirmCredit',
+        inputs: [{ name: 'creditId', type: ABIDataTypes.UINT256 }],
+        outputs: [{ name: 'success', type: ABIDataTypes.BOOL }],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
+        name: 'cancelCredit',
+        inputs: [{ name: 'creditId', type: ABIDataTypes.UINT256 }],
         outputs: [{ name: 'success', type: ABIDataTypes.BOOL }],
         type: BitcoinAbiTypes.Function,
     },
@@ -108,6 +120,18 @@ export const ChartArenaEscrowAbi = [
         type: BitcoinAbiTypes.Function,
     },
     {
+        name: 'setGuardian',
+        inputs: [{ name: 'newGuardian', type: ABIDataTypes.ADDRESS }],
+        outputs: [{ name: 'success', type: ABIDataTypes.BOOL }],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
+        name: 'setDailyCreditCap',
+        inputs: [{ name: 'newCap', type: ABIDataTypes.UINT256 }],
+        outputs: [{ name: 'success', type: ABIDataTypes.BOOL }],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
         name: 'getBalance',
         constant: true,
         inputs: [{ name: 'account', type: ABIDataTypes.ADDRESS }],
@@ -135,6 +159,26 @@ export const ChartArenaEscrowAbi = [
         constant: true,
         inputs: [],
         outputs: [{ name: 'jackpot', type: ABIDataTypes.UINT256 }],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
+        name: 'getCreditInfo',
+        constant: true,
+        inputs: [{ name: 'creditId', type: ABIDataTypes.UINT256 }],
+        outputs: [
+            { name: 'status', type: ABIDataTypes.UINT256 },
+            { name: 'amount', type: ABIDataTypes.UINT256 },
+        ],
+        type: BitcoinAbiTypes.Function,
+    },
+    {
+        name: 'getDailyCreditInfo',
+        constant: true,
+        inputs: [],
+        outputs: [
+            { name: 'cap', type: ABIDataTypes.UINT256 },
+            { name: 'used', type: ABIDataTypes.UINT256 },
+        ],
         type: BitcoinAbiTypes.Function,
     },
     ...ChartArenaEscrowEvents,

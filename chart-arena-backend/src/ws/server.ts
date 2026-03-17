@@ -141,17 +141,34 @@ export function getAuthenticatedCount(): number {
 }
 
 export function startWSServer(): void {
-    // P1 FIX: Verify origin on WebSocket upgrade to prevent CSRF
-    const ALLOWED_ORIGIN = process.env['ALLOWED_ORIGIN'] ?? 'http://localhost:5173';
+    // M-04 FIX: Build allowed origins set — supports www. subdomain automatically
+    const primaryOrigin = process.env['ALLOWED_ORIGIN'] ?? 'http://localhost:5173';
+    const allowedOrigins = new Set<string>([primaryOrigin]);
+    // Auto-add www. variant (and vice versa)
+    try {
+        const url = new URL(primaryOrigin);
+        if (url.hostname.startsWith('www.')) {
+            allowedOrigins.add(primaryOrigin.replace('://www.', '://'));
+        } else {
+            allowedOrigins.add(primaryOrigin.replace('://', '://www.'));
+        }
+    } catch { /* invalid URL — skip www. variant */ }
+    logger.info(TAG, `Allowed origins: ${[...allowedOrigins].join(', ')}`);
+
     const wss = new WebSocketServer({
         port: config.wsPort,
         maxPayload: 16384,
         verifyClient: (info: { origin: string; req: { headers: Record<string, string | string[] | undefined> } }) => {
             if (config.devMode) return true;
             const origin = info.origin || (info.req.headers['origin'] as string) || '';
-            if (origin === ALLOWED_ORIGIN) return true;
-            if (!origin) return true; // server-to-server, health checks
-            logger.warn(TAG, `WS connection rejected: origin=${origin} (allowed=${ALLOWED_ORIGIN})`);
+            if (allowedOrigins.has(origin)) return true;
+            // M-04 FIX: Empty origin = non-browser client. Block in production.
+            // Health checks should use the HTTP API, not WebSocket.
+            if (!origin) {
+                logger.warn(TAG, `WS connection rejected: no origin header (non-browser client)`);
+                return false;
+            }
+            logger.warn(TAG, `WS connection rejected: origin=${origin} (allowed=${[...allowedOrigins].join(', ')})`);
             return false;
         },
     });
@@ -196,7 +213,12 @@ export function startWSServer(): void {
                 const text = data.toString('utf-8');
                 const parsed: unknown = JSON.parse(text);
                 if (typeof parsed === 'object' && parsed !== null && _handleMessage) {
-                    _handleMessage(ws, parsed as Record<string, unknown>);
+                    // M-06 FIX: Strip prototype pollution keys
+                    const msg = parsed as Record<string, unknown>;
+                    delete msg['__proto__'];
+                    delete msg['constructor'];
+                    delete msg['prototype'];
+                    _handleMessage(ws, msg);
                 }
             } catch {
                 sendToSocket(ws, ServerMsg.ERROR, { message: 'Invalid message format' });

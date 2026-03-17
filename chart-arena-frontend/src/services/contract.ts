@@ -30,8 +30,10 @@ import { ESCROW_ADDRESS, MOTO_TOKEN } from '../utils/constants';
  * Cache of bech32/hex → opnet-bundle Address objects.
  * Keyed by `${address}:${isContract}` to separate user vs contract lookups
  * (the provider returns different key combos for each).
+ * L-05 FIX: Evict when exceeding MAX_CACHE_SIZE to prevent OOM on long sessions.
  */
 const addressCache = new Map<string, any>();
+const MAX_ADDRESS_CACHE_SIZE = 500;
 
 /**
  * Resolve any address string to an opnet-bundle-compatible Address object.
@@ -59,6 +61,11 @@ async function resolveAddress(
         );
     }
 
+    // L-05 FIX: Evict oldest entries if cache exceeds limit
+    if (addressCache.size >= MAX_ADDRESS_CACHE_SIZE) {
+        const firstKey = addressCache.keys().next().value;
+        if (firstKey !== undefined) addressCache.delete(firstKey);
+    }
     addressCache.set(key, resolved);
     return resolved;
 }

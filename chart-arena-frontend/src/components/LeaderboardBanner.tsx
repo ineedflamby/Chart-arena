@@ -57,11 +57,13 @@ export function LeaderboardBanner({ standings, address, startingCapital, foggedP
                             color: isFogged ? '#554d73'
                                 : (scrambleActive && !isMe)
                                     ? ['#82c4a0','#F4B8CE','#554d73'][Math.floor((Date.now()/1000 + s.address.length) % 3)]
+                                    : s.positionStatus === 'HIDDEN' ? '#92B4F4'
                                     : s.positionStatus === 'LONG' ? '#82c4a0' : s.positionStatus === 'SHORT' ? '#F4B8CE' : '#554d73',
                         }}>
                             {isFogged ? '👻'
                                 : (scrambleActive && !isMe)
                                     ? ['🟢','🔴','⚪'][Math.floor((Date.now()/1000 + s.address.length) % 3)]
+                                    : s.positionStatus === 'HIDDEN' ? '👻'
                                     : s.positionStatus === 'FLAT' ? '⚪' : s.positionStatus === 'LONG' ? '🟢' : '🔴'}
                         </span>
                         {xrayInventories[s.address] && !isMe && (

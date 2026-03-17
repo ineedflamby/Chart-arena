@@ -44,7 +44,7 @@ const addressToWsId = new Map<string, string>();   // address → wsId
 // Client holds raw token; server never stores raw token at rest.
 const tokenToAddress = new Map<string, { address: string; createdAt: number }>(); // hashedToken → {address, createdAt}
 const addressToToken = new Map<string, string>();   // address → hashedToken
-const TOKEN_TTL_MS = 7 * 24 * 60 * 60 * 1000;     // 7 days
+const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;          // L-02 FIX: 24 hours (was 7 days)
 
 /** BE-13: Hash a raw token with SHA-256 before storage/lookup */
 function hashToken(rawToken: string): string {
@@ -335,23 +335,49 @@ export async function authenticate(
     }
 
     if (isTaprootAddress(address) || isOpnetAddress(address)) {
-        // SPRINT 3 FIX: Verify pubkey against on-chain data for BOTH taproot and OPNet addresses.
-        // Previously taproot was blindly trusted — now we check if the address has on-chain history.
+        // H-01 FIX: Three-tier pubkey verification:
+        //   1. On-chain canonical pubkey (highest trust)
+        //   2. DB-stored first-seen pubkey (prevents impersonation of known addresses)
+        //   3. New address: accept + pin in DB (first write wins)
+        const clientPubkeyHex = bytesToHex(xOnlyPubkey);
+
         try {
             const canonicalHex = await contractService.getCanonicalPubkey(address);
-            if (!canonicalHex) {
-                // No on-chain history — trust client pubkey (nothing to impersonate yet)
-                logger.info(TAG, `No on-chain pubkey for ${address} — accepting client pubkey (new wallet)`);
-            } else if (bytesToHex(xOnlyPubkey) !== canonicalHex) {
-                logger.warn(TAG, `IMPERSONATION BLOCKED: client pubkey does not match on-chain pubkey for ${address}`);
-                return false;
-            } else {
+            if (canonicalHex) {
+                // On-chain pubkey exists — must match
+                if (clientPubkeyHex !== canonicalHex) {
+                    logger.warn(TAG, `IMPERSONATION BLOCKED: client pubkey does not match on-chain pubkey for ${address}`);
+                    return false;
+                }
                 logger.info(TAG, `Pubkey verified on-chain for ${address}`);
+                // Update DB with on-chain verified key (authoritative source)
+                db.updateKnownPubkey(address, canonicalHex, 'onchain_verified');
+            } else {
+                // No on-chain history — check DB for first-seen pubkey
+                const knownPubkey = db.getKnownPubkey(address);
+                if (knownPubkey) {
+                    // We've seen this address before — must use the same pubkey
+                    if (clientPubkeyHex !== knownPubkey) {
+                        logger.warn(TAG, `IMPERSONATION BLOCKED: client pubkey does not match first-seen pubkey for ${address}`);
+                        logger.warn(TAG, `  Known: ${knownPubkey.slice(0, 16)}… Client: ${clientPubkeyHex.slice(0, 16)}…`);
+                        return false;
+                    }
+                    logger.info(TAG, `Pubkey verified (DB first-seen match) for ${address}`);
+                } else {
+                    // Brand new address — accept and pin
+                    logger.info(TAG, `New address ${address} — pinning client pubkey in DB`);
+                    // Note: will be pinned AFTER signature verification succeeds (below)
+                }
             }
         } catch (err) {
             if (isTaprootAddress(address)) {
-                // Taproot: pubkey lookup failure is non-fatal (wallet may not have OPNet activity)
-                logger.info(TAG, `Taproot pubkey lookup failed (non-fatal, trusting client): ${err}`);
+                // Taproot: on-chain lookup failure is non-fatal — fall back to DB check
+                const knownPubkey = db.getKnownPubkey(address);
+                if (knownPubkey && clientPubkeyHex !== knownPubkey) {
+                    logger.warn(TAG, `IMPERSONATION BLOCKED (taproot, DB check): pubkey mismatch for ${address}`);
+                    return false;
+                }
+                logger.info(TAG, `Taproot pubkey lookup failed, DB ${knownPubkey ? 'match OK' : 'no record (new)'}: ${err}`);
             } else {
                 // OPNet: pubkey lookup failure blocks auth
                 logger.error(TAG, `Pubkey verification failed for OPNet address: ${address}`, err);
@@ -372,6 +398,14 @@ export async function authenticate(
         return false;
     }
     logger.info(TAG, `BIP-340 signature verified for ${address}`);
+
+    // H-01: Pin pubkey in DB after successful signature verification
+    // INSERT OR IGNORE — first successful auth wins
+    const clientPubkeyHex = bytesToHex(xOnlyPubkey);
+    const isNew = db.setKnownPubkey(address, clientPubkeyHex);
+    if (isNew) {
+        logger.info(TAG, `Pinned first-seen pubkey for ${address}`);
+    }
 
     // 7. Create session
     createSession(wsId, address);

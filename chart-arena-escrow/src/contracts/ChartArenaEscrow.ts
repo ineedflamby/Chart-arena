@@ -1,21 +1,22 @@
 /**
- * ChartArenaEscrow v5 — On-chain escrow for Chart Arena matches.
+ * ChartArenaEscrow v6 — Guardian multisig protection.
  *
- * KEY CHANGE v5: Deposit model + operator match creation.
- *   - deposit(amount): Player deposits MOTO into escrow balance (1 TX, anytime)
- *   - operatorCreateMatch(buyIn, mode, format, player1, player2): Operator creates
- *     match directly in LOCKED state, debiting from internal balances. 1 TX = 1 block.
- *   - Old createMatch/joinMatch still work for backward compat (approval-based flow)
+ * KEY CHANGE v6: Two-key authorization for sensitive operations.
+ *   - operatorCreditDeposit → requestCredit (operator creates pending request)
+ *   - guardianConfirmCredit (guardian executes pending request)
+ *   - distributeJackpot now requires guardian (not operator)
+ *   - Daily credit cap prevents unbounded minting even with both keys
+ *   - Neither key alone can mint unbacked tokens or steal the jackpot
  *
- * RESULT: Per match = 1 operator TX, 1 block. Players sign 0 TXs during matchmaking.
- *         Players only need to deposit MOTO once (covers many matches).
+ * UNCHANGED: operatorCreateMatch, settleMatch, cancelMatch remain operator-only
+ *   (bounded by existing on-chain balance checks and payout sum verification)
  *
- * FIXES v4 (Sprint 3):
- *   - Bug 3.1: Reentrancy guard uses StoredU256 (persists across cross-contract callbacks)
- *   - Bug 3.2: _pullTokens/_pushTokens fail on empty return data (not silently succeed)
- *   - Bug 3.3: Blockchain.call third arg documented (stopExecutionOnFailure = true)
- *   - Bug 3.4: _playerMatch/_playerSlot cleared after settle/cancel/refund
- *   - Bug 3.5: Storage pointer layout documented; new pointer appended at END
+ * DEPLOYMENT: Requires 5 addresses: token, operator, guardian, treasury, prizePool
+ *
+ * PREVIOUS VERSIONS:
+ * v5.2: operatorCreditDeposit (operator-only, no cap — C-02 vulnerability)
+ * v5: deposit() + operatorCreateMatch() flow
+ * v4: reentrancy fixes, storage pointer audit
  */
 
 import { u256 } from '@btc-vision/as-bignum/assembly';
@@ -61,6 +62,19 @@ const PRIZE_POOL_BPS: u256 = u256.fromU32(3000);
 
 const REFUND_DELAY_BLOCKS: u256 = u256.fromU32(50);
 const SLOT_STRIDE: u256 = u256.fromU32(8);
+
+// v6: Guardian credit system constants
+const CREDIT_STATUS_NONE: u256 = u256.Zero;
+const CREDIT_STATUS_PENDING: u256 = u256.One;
+const CREDIT_STATUS_CONFIRMED: u256 = u256.fromU32(2);
+const CREDIT_STATUS_CANCELLED: u256 = u256.fromU32(3);
+
+// v6: Daily credit cap — 10,000 MOTO (10_000 × 10^18 wei)
+// Prevents unbounded minting even with both keys compromised.
+// Deployer can adjust via setDailyCreditCap().
+const DEFAULT_DAILY_CREDIT_CAP: u256 = u256.fromU64(10000);
+// Blocks per "day" — ~144 on mainnet (10-min blocks), ~144 on signet
+const BLOCKS_PER_DAY: u256 = u256.fromU32(144);
 
 // Selectors must match what the opnet SDK sends when calling OP-20 token methods.
 // The SDK uses its own pre-computed selectors (NOT ABICoder.encodeSelector output).
@@ -178,6 +192,35 @@ class JackpotDistributedEvent extends NetEvent {
     }
 }
 
+// v6: Guardian credit system events
+class CreditRequestedEvent extends NetEvent {
+    constructor(creditId: u256, player: Address, amount: u256) {
+        const writer = new BytesWriter(U256_BYTE_LENGTH + ADDRESS_BYTE_LENGTH + U256_BYTE_LENGTH);
+        writer.writeU256(creditId);
+        writer.writeAddress(player);
+        writer.writeU256(amount);
+        super('CreditRequested', writer);
+    }
+}
+
+class CreditConfirmedEvent extends NetEvent {
+    constructor(creditId: u256, player: Address, amount: u256) {
+        const writer = new BytesWriter(U256_BYTE_LENGTH + ADDRESS_BYTE_LENGTH + U256_BYTE_LENGTH);
+        writer.writeU256(creditId);
+        writer.writeAddress(player);
+        writer.writeU256(amount);
+        super('CreditConfirmed', writer);
+    }
+}
+
+class CreditCancelledEvent extends NetEvent {
+    constructor(creditId: u256) {
+        const writer = new BytesWriter(U256_BYTE_LENGTH);
+        writer.writeU256(creditId);
+        super('CreditCancelled', writer);
+    }
+}
+
 @final
 export class ChartArenaEscrow extends OP_NET {
     // ═══════════════════════════════════════════════════════════════
@@ -203,6 +246,15 @@ export class ChartArenaEscrow extends OP_NET {
     // Pointer 18: _playerSlotPtr
     // Pointer 19: _matchPlayersPtr
     // Pointer 20: _lockedPtr (reentrancy guard)
+    // ── v6 additions ──
+    // Pointer 21: _guardianPtr
+    // Pointer 22: _creditNoncePtr
+    // Pointer 23: _creditStatusPtr
+    // Pointer 24: _creditAmountPtr
+    // Pointer 25: _creditPlayerPtr (nonce → addressAsU256)
+    // Pointer 26: _dailyCreditCapPtr
+    // Pointer 27: _dailyCreditUsedPtr
+    // Pointer 28: _dailyCreditDayPtr
     // ═══════════════════════════════════════════════════════════════
 
     private readonly _tokenPtr: u16 = Blockchain.nextPointer;
@@ -253,6 +305,31 @@ export class ChartArenaEscrow extends OP_NET {
     private readonly _lockedPtr: u16 = Blockchain.nextPointer;
     private readonly _lockedStorage: StoredU256 = new StoredU256(this._lockedPtr, EMPTY_POINTER);
 
+    // ── v6: Guardian multisig storage ──
+    private readonly _guardianPtr: u16 = Blockchain.nextPointer;
+    private readonly _guardian: StoredAddress = new StoredAddress(this._guardianPtr);
+
+    private readonly _creditNoncePtr: u16 = Blockchain.nextPointer;
+    private readonly _creditNonce: StoredU256 = new StoredU256(this._creditNoncePtr, EMPTY_POINTER);
+
+    private readonly _creditStatusPtr: u16 = Blockchain.nextPointer;
+    private readonly _creditStatus: StoredMapU256 = new StoredMapU256(this._creditStatusPtr);
+
+    private readonly _creditAmountPtr: u16 = Blockchain.nextPointer;
+    private readonly _creditAmount: StoredMapU256 = new StoredMapU256(this._creditAmountPtr);
+
+    private readonly _creditPlayerPtr: u16 = Blockchain.nextPointer;
+    private readonly _creditPlayer: StoredMapU256 = new StoredMapU256(this._creditPlayerPtr);
+
+    private readonly _dailyCreditCapPtr: u16 = Blockchain.nextPointer;
+    private readonly _dailyCreditCap: StoredU256 = new StoredU256(this._dailyCreditCapPtr, EMPTY_POINTER);
+
+    private readonly _dailyCreditUsedPtr: u16 = Blockchain.nextPointer;
+    private readonly _dailyCreditUsed: StoredU256 = new StoredU256(this._dailyCreditUsedPtr, EMPTY_POINTER);
+
+    private readonly _dailyCreditDayPtr: u16 = Blockchain.nextPointer;
+    private readonly _dailyCreditDay: StoredU256 = new StoredU256(this._dailyCreditDayPtr, EMPTY_POINTER);
+
     public constructor() {
         super();
     }
@@ -269,16 +346,23 @@ export class ChartArenaEscrow extends OP_NET {
     public override onDeployment(_calldata: Calldata): void {
         const token = _calldata.readAddress();
         const operator = _calldata.readAddress();
+        const guardian = _calldata.readAddress();
         const treasury = _calldata.readAddress();
         const prizePool = _calldata.readAddress();
         if (token.isZero()) throw new Revert('Zero token address');
         if (operator.isZero()) throw new Revert('Zero operator address');
+        if (guardian.isZero()) throw new Revert('Zero guardian address');
         if (treasury.isZero()) throw new Revert('Zero treasury address');
         if (prizePool.isZero()) throw new Revert('Zero prize pool address');
+        if (operator.equals(guardian)) throw new Revert('Operator and guardian must differ');
         this._token.value = token;
         this._operator.value = operator;
+        this._guardian.value = guardian;
         this._treasury.value = treasury;
         this._prizePool.value = prizePool;
+        // v6: Set default daily credit cap (in MOTO units, not wei — multiply by 10^18 on read)
+        // 10,000 MOTO per day. Adjustable by deployer via setDailyCreditCap().
+        this._dailyCreditCap.set(SafeMath.mul(DEFAULT_DAILY_CREDIT_CAP, u256.fromU64(1_000_000_000_000_000_000)));
     }
 
     // ═══════════════════════════════════════════════════════════════
@@ -330,29 +414,93 @@ export class ChartArenaEscrow extends OP_NET {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // v5.2 NEW: OPERATOR CREDIT DEPOSIT — credits balance after direct MOTO.transfer()
-    // Eliminates cross-contract simulation failure entirely.
-    // Flow: Player does MOTO.transfer(escrow, amount) → backend verifies → calls this.
-    // No _pullTokens needed — tokens already in contract from direct transfer.
+    // v6 NEW: GUARDIAN-PROTECTED CREDIT SYSTEM (replaces operatorCreditDeposit)
+    //
+    // Step 1: Operator calls requestCredit(player, amount) → pending
+    // Step 2: Guardian calls confirmCredit(creditId) → executed
+    //
+    // Neither key alone can mint tokens. Both keys + daily cap required.
     // ═══════════════════════════════════════════════════════════════
 
     @method({ name: 'player', type: 'Address' }, { name: 'amount', type: 'u256' })
-    @returns({ name: 'success', type: 'boolean' })
-    public operatorCreditDeposit(calldata: Calldata): BytesWriter {
+    @returns({ name: 'creditId', type: 'u256' })
+    public requestCredit(calldata: Calldata): BytesWriter {
         this._nonReentrant();
         this._onlyOperator();
         const player: Address = calldata.readAddress();
         const amount: u256 = calldata.readU256();
         if (amount == u256.Zero) throw new Revert('Amount must be > 0');
         if (player.isZero()) throw new Revert('Zero player address');
-        // Credit to player's internal balance (tokens already in contract via direct transfer)
+
+        // Assign credit ID (auto-increment)
+        const creditId: u256 = SafeMath.add(this._creditNonce.value, u256.One);
+        this._creditNonce.set(creditId);
+
+        // Store pending credit
+        this._creditStatus.set(creditId, CREDIT_STATUS_PENDING);
+        this._creditAmount.set(creditId, amount);
+        this._creditPlayer.set(creditId, addressToU256(player));
+
+        this.emitEvent(new CreditRequestedEvent(creditId, player, amount));
+        const writer = new BytesWriter(U256_BYTE_LENGTH);
+        writer.writeU256(creditId);
+        this._releaseGuard();
+        return writer;
+    }
+
+    @method({ name: 'creditId', type: 'u256' })
+    @returns({ name: 'success', type: 'boolean' })
+    public confirmCredit(calldata: Calldata): BytesWriter {
+        this._nonReentrant();
+        this._onlyGuardian();
+        const creditId: u256 = calldata.readU256();
+
+        // Verify pending status
+        const status: u256 = this._creditStatus.get(creditId);
+        if (status != CREDIT_STATUS_PENDING) throw new Revert('Credit not pending');
+
+        // Read credit details
+        const amount: u256 = this._creditAmount.get(creditId);
+        const playerU256: u256 = this._creditPlayer.get(creditId);
+        if (playerU256 == u256.Zero) throw new Revert('Invalid credit player');
+        const player: Address = u256ToAddress(playerU256);
+
+        // v6: Check daily credit cap
+        this._checkDailyCreditCap(amount);
+
+        // Execute credit
         this._creditBalance(player, amount);
+
+        // Mark as confirmed
+        this._creditStatus.set(creditId, CREDIT_STATUS_CONFIRMED);
+
+        this.emitEvent(new CreditConfirmedEvent(creditId, player, amount));
         this.emitEvent(new DepositEvent(player, amount));
         const writer = new BytesWriter(1);
         writer.writeBoolean(true);
         this._releaseGuard();
         return writer;
     }
+
+    @method({ name: 'creditId', type: 'u256' })
+    @returns({ name: 'success', type: 'boolean' })
+    public cancelCredit(calldata: Calldata): BytesWriter {
+        this._nonReentrant();
+        this._onlyOperator();
+        const creditId: u256 = calldata.readU256();
+        const status: u256 = this._creditStatus.get(creditId);
+        if (status != CREDIT_STATUS_PENDING) throw new Revert('Credit not pending');
+        this._creditStatus.set(creditId, CREDIT_STATUS_CANCELLED);
+        this.emitEvent(new CreditCancelledEvent(creditId));
+        const writer = new BytesWriter(1);
+        writer.writeBoolean(true);
+        this._releaseGuard();
+        return writer;
+    }
+
+    // v6 BACKWARD COMPAT: operatorCreditDeposit is REMOVED.
+    // Calls to the old selector will revert with "Unknown method".
+    // The backend must be updated to use requestCredit + guardianConfirmCredit.
 
     // ═══════════════════════════════════════════════════════════════
     // v5 NEW: OPERATOR CREATE MATCH — 1 TX, straight to LOCKED
@@ -635,7 +783,8 @@ export class ChartArenaEscrow extends OP_NET {
     @returns({ name: 'success', type: 'boolean' })
     public distributeJackpot(calldata: Calldata): BytesWriter {
         this._nonReentrant();
-        this._onlyOperator();
+        // v6: Guardian required (was operator). Jackpot distribution is rare and high-value.
+        this._onlyGuardian();
         const winner: Address = calldata.readAddress();
         if (winner.isZero()) throw new Revert('Zero winner address');
         const jackpotAmount: u256 = this._jackpot.value;
@@ -685,6 +834,31 @@ export class ChartArenaEscrow extends OP_NET {
         return writer;
     }
 
+    @method({ name: 'newGuardian', type: 'Address' })
+    @returns({ name: 'success', type: 'boolean' })
+    public setGuardian(calldata: Calldata): BytesWriter {
+        this.onlyDeployer(Blockchain.tx.sender);
+        const newGuardian: Address = calldata.readAddress();
+        if (newGuardian.isZero()) throw new Revert('Zero address');
+        if (newGuardian.equals(this._operator.value)) throw new Revert('Guardian must differ from operator');
+        this._guardian.value = newGuardian;
+        const writer = new BytesWriter(1);
+        writer.writeBoolean(true);
+        return writer;
+    }
+
+    @method({ name: 'newCap', type: 'u256' })
+    @returns({ name: 'success', type: 'boolean' })
+    public setDailyCreditCap(calldata: Calldata): BytesWriter {
+        this.onlyDeployer(Blockchain.tx.sender);
+        const newCap: u256 = calldata.readU256();
+        // Zero = unlimited (not recommended, but available for emergencies)
+        this._dailyCreditCap.set(newCap);
+        const writer = new BytesWriter(1);
+        writer.writeBoolean(true);
+        return writer;
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // VIEW FUNCTIONS
     // ═══════════════════════════════════════════════════════════════
@@ -726,12 +900,65 @@ export class ChartArenaEscrow extends OP_NET {
         return writer;
     }
 
+    // v6: Guardian system view functions
+
+    @view
+    @method({ name: 'creditId', type: 'u256' })
+    @returns({ name: 'status', type: 'u256' }, { name: 'amount', type: 'u256' })
+    public getCreditInfo(calldata: Calldata): BytesWriter {
+        const creditId: u256 = calldata.readU256();
+        const writer = new BytesWriter(U256_BYTE_LENGTH * 2);
+        writer.writeU256(this._creditStatus.get(creditId));
+        writer.writeU256(this._creditAmount.get(creditId));
+        return writer;
+    }
+
+    @view
+    @method()
+    @returns({ name: 'cap', type: 'u256' }, { name: 'used', type: 'u256' })
+    public getDailyCreditInfo(calldata: Calldata): BytesWriter {
+        const writer = new BytesWriter(U256_BYTE_LENGTH * 2);
+        writer.writeU256(this._dailyCreditCap.value);
+        writer.writeU256(this._dailyCreditUsed.value);
+        return writer;
+    }
+
     // ═══════════════════════════════════════════════════════════════
     // INTERNAL
     // ═══════════════════════════════════════════════════════════════
 
     private _onlyOperator(): void {
         if (!Blockchain.tx.sender.equals(this._operator.value)) throw new Revert('Only operator');
+    }
+
+    private _onlyGuardian(): void {
+        if (!Blockchain.tx.sender.equals(this._guardian.value)) throw new Revert('Only guardian');
+    }
+
+    /**
+     * v6: Check and update daily credit usage. Reverts if cap exceeded.
+     * Resets counter when a new "day" starts (every BLOCKS_PER_DAY blocks).
+     */
+    private _checkDailyCreditCap(amount: u256): void {
+        const currentBlock: u256 = u256.fromU64(Blockchain.block.number);
+        const currentDay: u256 = SafeMath.div(currentBlock, BLOCKS_PER_DAY);
+        const lastDay: u256 = this._dailyCreditDay.value;
+
+        let used: u256;
+        if (currentDay != lastDay) {
+            // New day — reset counter
+            used = u256.Zero;
+            this._dailyCreditDay.set(currentDay);
+        } else {
+            used = this._dailyCreditUsed.value;
+        }
+
+        const newUsed: u256 = SafeMath.add(used, amount);
+        const cap: u256 = this._dailyCreditCap.value;
+        if (cap != u256.Zero && newUsed > cap) {
+            throw new Revert('Daily credit cap exceeded');
+        }
+        this._dailyCreditUsed.set(newUsed);
     }
 
     private _requireNotInActiveMatch(addr: Address): void {

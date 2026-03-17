@@ -1,6 +1,7 @@
 import { config } from './config.js';
 import { createServer, type IncomingMessage, type ServerResponse } from 'http';
 import { operatorWallet } from './services/operator-wallet.js';
+import { guardianWallet } from './services/guardian-wallet.js';
 import { contractService } from './services/contract.js';
 import { db } from './db/database.js';
 import { startWSServer, setMessageHandler, setDisconnectHandler, sendToPlayer, broadcastToAll, getAuthenticatedCount } from './ws/server.js';
@@ -9,8 +10,9 @@ import { getGame } from './game/game-loop.js';
 import { logger } from './utils/logger.js';
 import { handleTwitterCallback } from './services/twitter-auth.js';
 import { ServerMsg } from './utils/constants.js';
-import { loadSettledMatches } from './services/settlement.js';
+import { loadSettledMatches, reconcilePendingSettlements, startSettlementConfirmationPoller } from './services/settlement.js';
 import { startDailyCron, stopDailyCron } from './services/daily-reset.js';
+import { startSettlementWatchdog } from './services/matchmaking.js';
 import { initSessionTokens } from './ws/auth.js';
 
 const TAG = 'Main';
@@ -43,6 +45,7 @@ async function main(): Promise<void> {
     loadSettledMatches();
     initSessionTokens();  // L-01: Load persisted session tokens from DB
     operatorWallet.init();
+    guardianWallet.init();
     await contractService.init();
 
     try {
@@ -54,11 +57,27 @@ async function main(): Promise<void> {
         logger.warn(TAG, 'DEV_MODE: Continuing despite contract read failure');
     }
 
+    // H-02 FIX: Reconcile pending settlements against on-chain state (requires contractService)
+    try {
+        await reconcilePendingSettlements();
+    } catch (err) {
+        logger.error(TAG, 'Settlement reconciliation failed — continuing', err);
+    }
+
+    // C-03 FIX: Start background poller to confirm pending off-chain payouts
+    startSettlementConfirmationPoller();
+
     // V5-05 FIX: Log operator wallet address and remind to keep funded
     logger.info(TAG, `Operator wallet: ${operatorWallet.p2tr}`);
+    if (guardianWallet.enabled) {
+        logger.info(TAG, `Guardian wallet: ${guardianWallet.p2tr}`);
+    }
     if (!config.devMode) {
-        logger.info(TAG, '━━━ IMPORTANT: Operator wallet must have tBTC for gas ━━━');
-        logger.info(TAG, `Fund this address if matches fail: ${operatorWallet.p2tr}`);
+        logger.info(TAG, '━━━ IMPORTANT: Both wallets must have tBTC for gas ━━━');
+        logger.info(TAG, `Operator: ${operatorWallet.p2tr}`);
+        if (guardianWallet.enabled) {
+            logger.info(TAG, `Guardian: ${guardianWallet.p2tr}`);
+        }
         logger.info(TAG, `Max sat per TX: ${config.maxSatToSpend}`);
     }
 
@@ -71,6 +90,9 @@ async function main(): Promise<void> {
 
     // Start daily cron (season checks, Sunday decay)
     startDailyCron();
+
+    // H-04 FIX: Start settlement retry watchdog (retries failed settlements before refund deadline)
+    startSettlementWatchdog();
 
     // P2 FIX: Operator wallet balance monitoring
     if (!config.devMode) {

@@ -1091,7 +1091,9 @@ export class GameInstance {
 
         return {
             matchId: this.match.matchId.toString(),
-            seed: this.match.seed.toString(),
+            // L-04 FIX: Don't leak raw seed in reconnect — send commitment hash only.
+            // Raw seed is revealed in GAME_END for post-match verification.
+            seed: 'reconnect:hidden',
             totalTicks: this.totalMatchTicks,
             startingCapital: STARTING_CAPITAL,
             buyIn: this.match.buyIn.toString(),

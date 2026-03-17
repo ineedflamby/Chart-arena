@@ -129,6 +129,9 @@ async function handleAuth(ws: GameSocket, msg: Record<string, unknown>, wsId: st
         // Issue a session token so the client can reconnect without re-signing
         const sessionToken = generateSessionToken(address);
         sendToSocket(ws, ServerMsg.AUTH_OK, { address, sessionToken });
+        // Sprint 2 FIX: Pre-cache address resolution (non-blocking).
+        // If the node knows this pubkey, we cache it now. If not, deposit retry handles it.
+        contractService.warmupAddressCache(address).catch(() => {});
         // Send chat history on auth
         sendToSocket(ws, ServerMsg.CHAT_HISTORY, { channel: ChatChannel.PUBLIC, messages: getPublicHistory() });
         sendToSocket(ws, ServerMsg.CHAT_HISTORY, { channel: ChatChannel.ANNOUNCEMENT, messages: getAnnouncementHistory() });
@@ -187,6 +190,8 @@ function handleTokenAuth(ws: GameSocket, msg: Record<string, unknown>, wsId: str
         // Issue a fresh token
         const newToken = generateSessionToken(address);
         sendToSocket(ws, ServerMsg.AUTH_OK, { address, sessionToken: newToken });
+        // Sprint 2 FIX: Pre-cache address resolution (non-blocking)
+        contractService.warmupAddressCache(address).catch(() => {});
         // Same post-auth flow as normal auth
         sendToSocket(ws, ServerMsg.CHAT_HISTORY, { channel: ChatChannel.PUBLIC, messages: getPublicHistory() });
         sendToSocket(ws, ServerMsg.CHAT_HISTORY, { channel: ChatChannel.ANNOUNCEMENT, messages: getAnnouncementHistory() });
@@ -885,6 +890,8 @@ async function handleDepositRequest(ws: GameSocket, msg: Record<string, unknown>
 /**
  * SPRINT 3: Get escrow balance from off-chain ledger (instant, no block wait).
  * Falls back to on-chain if no ledger entries exist (pre-Sprint2 deposits).
+ * Sprint 2 FIX: Uses getPlayerBalanceOrNull to avoid error spam for new wallets
+ * whose public key hasn't been indexed by the OPNet node yet.
  */
 async function handleGetEscrowBalance(ws: GameSocket, wsId: string): Promise<void> {
     if (!requireAuth(ws, wsId)) return;
@@ -899,12 +906,22 @@ async function handleGetEscrowBalance(ws: GameSocket, wsId: string): Promise<voi
                 source: 'offchain',
             });
         } else {
-            // No ledger entries — fall back to on-chain
-            const onchainBalance = await contractService.getPlayerBalance(address);
-            sendToSocket(ws, ServerMsg.ESCROW_BALANCE, {
-                balance: onchainBalance.toString(),
-                source: 'onchain',
-            });
+            // No ledger entries — try on-chain (graceful: returns null if address unresolvable)
+            const onchainBalance = await contractService.getPlayerBalanceOrNull(address);
+            if (onchainBalance !== null) {
+                sendToSocket(ws, ServerMsg.ESCROW_BALANCE, {
+                    balance: onchainBalance.toString(),
+                    source: 'onchain',
+                });
+            } else {
+                // Sprint 2 FIX: New wallet — node hasn't indexed pubkey yet.
+                // Return 0 with 'new_player' source instead of error spam.
+                // Balance will update once they make their first deposit.
+                sendToSocket(ws, ServerMsg.ESCROW_BALANCE, {
+                    balance: '0',
+                    source: 'new_player',
+                });
+            }
         }
     } catch (err) {
         logger.warn(TAG, `Balance check failed for ${address}: ${err}`);

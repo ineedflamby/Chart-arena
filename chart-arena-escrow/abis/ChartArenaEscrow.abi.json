@@ -41,7 +41,7 @@
             ]
         },
         {
-            "name": "operatorCreditDeposit",
+            "name": "requestCredit",
             "type": "Function",
             "payable": false,
             "onlyOwner": false,
@@ -52,6 +52,42 @@
                 },
                 {
                     "name": "amount",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "creditId",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "confirmCredit",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "creditId",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "success",
+                    "type": "BOOL"
+                }
+            ]
+        },
+        {
+            "name": "cancelCredit",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "creditId",
                     "type": "UINT256"
                 }
             ],
@@ -288,6 +324,42 @@
             ]
         },
         {
+            "name": "setGuardian",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "newGuardian",
+                    "type": "ADDRESS"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "success",
+                    "type": "BOOL"
+                }
+            ]
+        },
+        {
+            "name": "setDailyCreditCap",
+            "type": "Function",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "newCap",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "success",
+                    "type": "BOOL"
+                }
+            ]
+        },
+        {
             "name": "getBalance",
             "type": "View",
             "payable": false,
@@ -360,6 +432,45 @@
             "outputs": [
                 {
                     "name": "jackpot",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getCreditInfo",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [
+                {
+                    "name": "creditId",
+                    "type": "UINT256"
+                }
+            ],
+            "outputs": [
+                {
+                    "name": "status",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "amount",
+                    "type": "UINT256"
+                }
+            ]
+        },
+        {
+            "name": "getDailyCreditInfo",
+            "type": "View",
+            "payable": false,
+            "onlyOwner": false,
+            "inputs": [],
+            "outputs": [
+                {
+                    "name": "cap",
+                    "type": "UINT256"
+                },
+                {
+                    "name": "used",
                     "type": "UINT256"
                 }
             ]

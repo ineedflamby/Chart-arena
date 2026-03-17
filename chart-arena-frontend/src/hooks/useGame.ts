@@ -5,7 +5,8 @@ import { sound } from '../services/sound';
 import { str, num, bool, arr, validateTick, validateItemDrops, validateStandings } from '../services/wsGuards';
 
 export type Screen = 'lobby' | 'onboarding' | 'queue' | 'waiting_onchain' | 'lobby_countdown' | 'seed_reveal' | 'preview' | 'playing' | 'results';
-export type PositionStatus = 'FLAT' | 'LONG' | 'SHORT';
+// H-03 FIX: 'HIDDEN' sent by backend when opponent has Ghost Trade active
+export type PositionStatus = 'FLAT' | 'LONG' | 'SHORT' | 'HIDDEN';
 export type TradeAction = 'OPEN_LONG' | 'OPEN_SHORT' | 'CLOSE';
 
 export type { PriceTick, Candle };

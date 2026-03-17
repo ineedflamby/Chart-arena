@@ -13,5 +13,10 @@
     "index": 3,
     "taproot": "opt1pec99x2cu3zlnxe8hghu4qw9yv5k9yp3d58fla9sat3v4fcw77flq23hq0t",
     "hex": "0xb076f31447ab6e5ba385e472cc84c8144fa7b27b6317813ebaf6a79e3f1fe828"
+  },
+  "guardian": {
+    "index": 0,
+    "taproot": "opt1pnzmw70h6fwcsmla82vk8taql6ch4v05afcrgyywhkmg44e70fz0qg5y9es",
+    "hex": "0x32a4763c7f429849372686fa93fe88fb04755ed996afcbad53f5b6f7676c53c0"
   }
 }

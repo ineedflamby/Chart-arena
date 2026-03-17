@@ -4,10 +4,11 @@ import { contractService } from './contract.js';
 import { logger } from '../utils/logger.js';
 import { db } from '../db/database.js';
 import { createGame, type GameInstance, removeGame } from '../game/game-loop.js';
+import { hasGhostTrade } from '../game/items.js';
 import type { MatchLog, MatchSummary } from '../game/types.js';
 import { settleMatch, runPostSettlementWork } from './settlement.js';
 import { getBotAddresses, startBotTrading, stopBotTrading, isBotAddress } from './bot.js';
-import { sendToSocket, sendToPlayer, broadcastToMatch, assignToMatch, broadcastToAll, type GameSocket } from '../ws/server.js';
+import { sendToSocket, sendToPlayer, broadcastToMatch, broadcastToMatchExcept, assignToMatch, broadcastToAll, type GameSocket } from '../ws/server.js';
 import {
     ServerMsg, maxPlayers, type FormatValue,
     STARTING_CAPITAL,
@@ -556,10 +557,28 @@ function wireGameCallbacks(game: GameInstance, matchId: bigint): void {
         sendToPlayer(player, ServerMsg.ITEM_REJECTED, { reason });
 
     // Portfolios
+    // H-03 FIX: Ghost Trade hides position status from opponents.
+    // Send real data to the player, obfuscated data to everyone else.
     game.onPortfolioUpdate = (_m, address, equity, status, entryPrice) => {
-        broadcastToMatch(matchId, ServerMsg.PORTFOLIO_UPDATE, {
-            address, equity, positionStatus: status, entryPrice,
-        });
+        const player = game.match.players.get(address);
+        const tick = game.match.currentTick;
+        const isGhosted = player ? hasGhostTrade(player.itemState, tick) : false;
+
+        if (isGhosted) {
+            // Send real data only to the player themselves
+            sendToPlayer(address, ServerMsg.PORTFOLIO_UPDATE, {
+                address, equity, positionStatus: status, entryPrice,
+            });
+            // Send obfuscated data to opponents
+            broadcastToMatchExcept(matchId, address, ServerMsg.PORTFOLIO_UPDATE, {
+                address, equity, positionStatus: 'HIDDEN', entryPrice: 0,
+            });
+        } else {
+            // Normal broadcast
+            broadcastToMatch(matchId, ServerMsg.PORTFOLIO_UPDATE, {
+                address, equity, positionStatus: status, entryPrice,
+            });
+        }
     };
 
     // R-10: Elimination (Survival)
@@ -672,8 +691,91 @@ function wireGameCallbacks(game: GameInstance, matchId: bigint): void {
                     broadcastToMatch(matchId, ServerMsg.SETTLEMENT, {
                         matchId: matchId.toString(), status: 'failed', error: String(err),
                     });
+                    // H-04 FIX: Queue for retry instead of giving up.
+                    // The match stays LOCKED on-chain — we have ~50 blocks before emergency refund.
+                    queueSettlementRetry(matchId, game.match, standings, summary);
                     stopBotTrading(matchId); cleanupGameRoom(matchId.toString()); removeGame(matchId);
                 });
         }
     };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// H-04 FIX: Settlement retry queue + deadline watchdog
+//
+// If settlement fails, the match stays LOCKED on-chain. Without retry,
+// it sits there until emergency refund (50 blocks ≈ 8h on signet).
+// This queue retries every 60s with exponential backoff.
+// ═══════════════════════════════════════════════════════════════════
+
+interface FailedSettlement {
+    matchId: bigint;
+    match: import('../game/types.js').GameMatch;
+    standings: import('../game/types.js').Standing[];
+    summary: import('../game/types.js').MatchSummary | undefined;
+    attempts: number;
+    lastAttempt: number;
+    createdAt: number;
+}
+
+const failedSettlements = new Map<string, FailedSettlement>();
+const MAX_RETRY_ATTEMPTS = 10;
+const RETRY_BASE_MS = 30_000;     // 30s first retry
+const RETRY_MAX_MS = 5 * 60_000;  // 5 min max between retries
+
+function queueSettlementRetry(
+    matchId: bigint,
+    match: import('../game/types.js').GameMatch,
+    standings: import('../game/types.js').Standing[],
+    summary: import('../game/types.js').MatchSummary | undefined,
+): void {
+    const key = matchId.toString();
+    if (failedSettlements.has(key)) return; // already queued
+    failedSettlements.set(key, {
+        matchId, match, standings, summary,
+        attempts: 0, lastAttempt: 0, createdAt: Date.now(),
+    });
+    logger.warn(TAG, `⚠️  Settlement queued for retry: match ${key}`);
+}
+
+/** Exported for index.ts startup */
+export function startSettlementWatchdog(): void {
+    setInterval(async () => {
+        for (const [key, entry] of failedSettlements) {
+            // Exponential backoff
+            const delay = Math.min(RETRY_BASE_MS * Math.pow(2, entry.attempts), RETRY_MAX_MS);
+            if (Date.now() - entry.lastAttempt < delay) continue;
+
+            entry.attempts++;
+            entry.lastAttempt = Date.now();
+
+            if (entry.attempts > MAX_RETRY_ATTEMPTS) {
+                logger.error(TAG, `🚨 CRITICAL: Settlement retry exhausted for match ${key} after ${MAX_RETRY_ATTEMPTS} attempts. Manual intervention required.`);
+                failedSettlements.delete(key);
+                continue;
+            }
+
+            logger.info(TAG, `Retrying settlement for match ${key} (attempt ${entry.attempts}/${MAX_RETRY_ATTEMPTS})...`);
+            try {
+                const txHash = await settleMatch(entry.match, entry.standings);
+                logger.info(TAG, `✅ Settlement retry succeeded for match ${key}: ${txHash}`);
+                const matchBuyIn = entry.match.buyIn.toString();
+                await runPostSettlementWork(
+                    entry.matchId, entry.standings, matchBuyIn, false,
+                    entry.match.format, entry.summary,
+                );
+                failedSettlements.delete(key);
+            } catch (err) {
+                const msg = String(err);
+                // If already settled or refunded, remove from queue
+                if (msg.includes('already settled') || msg.includes('not locked') || msg.includes('Match is not locked')) {
+                    logger.info(TAG, `Match ${key} no longer needs settlement (${msg.slice(0, 60)})`);
+                    failedSettlements.delete(key);
+                } else {
+                    logger.warn(TAG, `Settlement retry ${entry.attempts} failed for match ${key}: ${msg.slice(0, 100)}`);
+                }
+            }
+        }
+    }, 60_000); // Check every 60s
+    logger.info(TAG, 'Settlement retry watchdog started (interval: 60s)');
 }
